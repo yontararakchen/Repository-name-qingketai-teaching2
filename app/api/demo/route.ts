@@ -34,6 +34,11 @@ export async function POST(request: Request) {
     db.prepare("INSERT OR IGNORE INTO activity_responses (id, activity_id, student_id, answer, submitted_at) VALUES (?, ?, ?, ?, ?)").bind("demo_response_3", "demo_activity_1", "student_3", "if 判断", "2026-09-05T08:46:00.000Z"),
     db.prepare("INSERT OR IGNORE INTO activity_responses (id, activity_id, student_id, answer, submitted_at) VALUES (?, ?, ?, ?, ?)").bind("demo_response_4", "demo_activity_2", "student_1", "3 个", "2026-09-05T09:01:00.000Z"),
     db.prepare("INSERT OR IGNORE INTO activity_responses (id, activity_id, student_id, answer, submitted_at) VALUES (?, ?, ?, ?, ?)").bind("demo_response_5", "demo_activity_2", "student_4", "4 个", "2026-09-05T09:02:00.000Z"),
+    db.prepare("INSERT OR IGNORE INTO content_knowledge_points (id, knowledge_point_id, object_type, object_id, created_at) VALUES (?, ?, 'material', ?, ?)").bind("demo_ckp_material_5", "kp_loop_basics", "demo_material_5", createdAt),
+    db.prepare("INSERT OR IGNORE INTO content_knowledge_points (id, knowledge_point_id, object_type, object_id, created_at) VALUES (?, ?, 'activity', ?, ?)").bind("demo_ckp_activity_1", "kp_for_iteration", "demo_activity_1", createdAt),
+    db.prepare("INSERT OR IGNORE INTO content_knowledge_points (id, knowledge_point_id, object_type, object_id, created_at) VALUES (?, ?, 'activity', ?, ?)").bind("demo_ckp_activity_2", "kp_range_count", "demo_activity_2", createdAt),
+    db.prepare("INSERT OR IGNORE INTO content_knowledge_points (id, knowledge_point_id, object_type, object_id, created_at) VALUES (?, ?, 'learning_task', ?, ?)").bind("demo_ckp_task_preview", "kp_loop_basics", "demo_task_preview", createdAt),
+    db.prepare("INSERT OR IGNORE INTO content_knowledge_points (id, knowledge_point_id, object_type, object_id, created_at) VALUES (?, ?, 'assignment', ?, ?)").bind("demo_ckp_assignment_3", "kp_for_iteration", "demo_assignment_3", createdAt),
   ]);
   const submissionRows = [
     ["demo_submission_1", "demo_assignment_1", "student_1", "已完成变量练习。", "92", "基础扎实，表达清楚。", "graded"],

@@ -183,6 +183,51 @@ export const schemaStatements = [
     calculated_at TEXT NOT NULL,
     FOREIGN KEY (class_id) REFERENCES classes(id)
   )`,
+  `CREATE TABLE IF NOT EXISTS knowledge_points (
+    id TEXT PRIMARY KEY,
+    course_id TEXT NOT NULL,
+    chapter_id TEXT,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'archived')),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (course_id) REFERENCES courses(id),
+    FOREIGN KEY (chapter_id) REFERENCES chapters(id)
+  )`,
+  `CREATE TABLE IF NOT EXISTS knowledge_relations (
+    id TEXT PRIMARY KEY,
+    knowledge_point_id TEXT NOT NULL,
+    prerequisite_id TEXT NOT NULL,
+    relation_type TEXT NOT NULL DEFAULT 'prerequisite' CHECK (relation_type IN ('prerequisite')),
+    created_at TEXT NOT NULL,
+    UNIQUE (knowledge_point_id, prerequisite_id),
+    FOREIGN KEY (knowledge_point_id) REFERENCES knowledge_points(id),
+    FOREIGN KEY (prerequisite_id) REFERENCES knowledge_points(id)
+  )`,
+  `CREATE TABLE IF NOT EXISTS content_knowledge_points (
+    id TEXT PRIMARY KEY,
+    knowledge_point_id TEXT NOT NULL,
+    object_type TEXT NOT NULL CHECK (object_type IN ('chapter', 'material', 'assignment', 'activity', 'learning_task')),
+    object_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE (knowledge_point_id, object_type, object_id),
+    FOREIGN KEY (knowledge_point_id) REFERENCES knowledge_points(id)
+  )`,
+  `CREATE TABLE IF NOT EXISTS student_knowledge_mastery (
+    id TEXT PRIMARY KEY,
+    class_id TEXT NOT NULL,
+    student_id TEXT NOT NULL,
+    knowledge_point_id TEXT NOT NULL,
+    mastery_score REAL,
+    evidence_count INTEGER NOT NULL DEFAULT 0,
+    evidence TEXT NOT NULL DEFAULT '[]',
+    calculated_at TEXT NOT NULL,
+    UNIQUE (class_id, student_id, knowledge_point_id),
+    FOREIGN KEY (class_id) REFERENCES classes(id),
+    FOREIGN KEY (student_id) REFERENCES students(id),
+    FOREIGN KEY (knowledge_point_id) REFERENCES knowledge_points(id)
+  )`,
   `CREATE TABLE IF NOT EXISTS submissions (
     id TEXT PRIMARY KEY,
     assignment_id TEXT NOT NULL,
@@ -209,6 +254,10 @@ export const schemaStatements = [
   `CREATE INDEX IF NOT EXISTS idx_learning_events_class_time ON learning_events(class_id, occurred_at)`,
   `CREATE INDEX IF NOT EXISTS idx_learning_events_student ON learning_events(student_id, occurred_at)`,
   `CREATE INDEX IF NOT EXISTS idx_student_insights_class ON student_insights(class_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_knowledge_points_course ON knowledge_points(course_id, status)`,
+  `CREATE INDEX IF NOT EXISTS idx_knowledge_points_chapter ON knowledge_points(chapter_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_content_knowledge_points_object ON content_knowledge_points(object_type, object_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_mastery_class_student ON student_knowledge_mastery(class_id, student_id)`,
   `CREATE INDEX IF NOT EXISTS idx_submissions_assignment_id ON submissions(assignment_id)`,
   `CREATE INDEX IF NOT EXISTS idx_class_members_user_id ON class_members(user_id)`,
   `CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at)`,
