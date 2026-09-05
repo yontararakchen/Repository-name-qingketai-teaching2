@@ -1,0 +1,6 @@
+CREATE TABLE IF NOT EXISTS lesson_sessions (id TEXT PRIMARY KEY, class_id TEXT NOT NULL, chapter_id TEXT, teacher_user_id TEXT, start_time TEXT NOT NULL, end_time TEXT, status TEXT NOT NULL DEFAULT 'active', FOREIGN KEY (class_id) REFERENCES classes(id), FOREIGN KEY (chapter_id) REFERENCES chapters(id), FOREIGN KEY (teacher_user_id) REFERENCES users(id));
+CREATE TABLE IF NOT EXISTS activities (id TEXT PRIMARY KEY, session_id TEXT NOT NULL, activity_type TEXT NOT NULL CHECK (activity_type IN ('choice', 'poll', 'short_answer')), prompt TEXT NOT NULL, options TEXT NOT NULL DEFAULT '[]', status TEXT NOT NULL DEFAULT 'published', created_at TEXT NOT NULL, FOREIGN KEY (session_id) REFERENCES lesson_sessions(id));
+CREATE TABLE IF NOT EXISTS activity_responses (id TEXT PRIMARY KEY, activity_id TEXT NOT NULL, student_id TEXT NOT NULL, answer TEXT NOT NULL DEFAULT '', submitted_at TEXT NOT NULL, UNIQUE (activity_id, student_id), FOREIGN KEY (activity_id) REFERENCES activities(id), FOREIGN KEY (student_id) REFERENCES students(id));
+CREATE INDEX IF NOT EXISTS idx_lesson_sessions_class_id ON lesson_sessions(class_id);
+CREATE INDEX IF NOT EXISTS idx_activities_session_id ON activities(session_id);
+CREATE INDEX IF NOT EXISTS idx_activity_responses_activity_id ON activity_responses(activity_id);
