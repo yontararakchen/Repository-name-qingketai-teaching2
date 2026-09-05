@@ -37,8 +37,8 @@ export async function POST(request: Request) {
   if (!identity.demo && identity.role !== "teacher") return NextResponse.json({ error: "只有教师可以控制课堂" }, { status: 403 });
   if (body?.action === "start" || body?.action === "restart") {
     const active = await db.prepare("SELECT id FROM lesson_sessions WHERE class_id = ? AND status = 'active' LIMIT 1").bind("class_python").first<{ id: string }>();
-    if (active && body.action === "start" && !identity.demo) return NextResponse.json({ error: "当前已有进行中的课堂，请结束当前课堂后再开始" }, { status: 409 });
-    if (active && (body.action === "restart" || identity.demo)) await db.prepare("UPDATE lesson_sessions SET status = 'ended', end_time = ? WHERE id = ?").bind(timestamp(), active.id).run();
+    if (active && body.action === "start" && identity.role !== "teacher") return NextResponse.json({ error: "当前已有进行中的课堂，请结束当前课堂后再开始" }, { status: 409 });
+    if (active && (body.action === "restart" || identity.role === "teacher")) await db.prepare("UPDATE lesson_sessions SET status = 'ended', end_time = ? WHERE id = ?").bind(timestamp(), active.id).run();
     const id = newId("lesson"); await db.prepare("INSERT INTO lesson_sessions (id, class_id, chapter_id, teacher_user_id, start_time, status) VALUES (?, ?, ?, ?, ?, 'active')").bind(id, "class_python", body.chapterId ?? "chapter_3", identity.demo ? null : identity.id, timestamp()).run(); await writeAudit(db, identity, "start", "lesson_session", id); return NextResponse.json({ session: { id, status: "active" }, source: "d1" }, { status: 201 });
   }
   const session = await db.prepare("SELECT id FROM lesson_sessions WHERE class_id = ? AND status = 'active' ORDER BY start_time DESC LIMIT 1").bind("class_python").first<{ id: string }>();
