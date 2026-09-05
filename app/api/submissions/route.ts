@@ -3,57 +3,29 @@ import { ensureSchema, getDatabase, newId, seedDemoData, timestamp } from "@/db/
 import { getIdentity, resolveClassId, resolveStudentId, writeAudit, writeLearningEvent } from "@/db/auth";
 
 export const dynamic = "force-dynamic";
+type Body = { assignmentId?: string; studentId?: string; content?: string; status?: "draft" | "submitted"; attachmentName?: string; attachmentBase64?: string };
+
+function encode(bytes: Uint8Array) { let binary = ""; for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return btoa(binary); }
 
 export async function POST(request: Request) {
-  const body = await request.json().catch(() => null) as { assignmentId?: string; studentId?: string; content?: string } | null;
-  if (!body?.assignmentId) return NextResponse.json({ error: "缺少作业信息" }, { status: 400 });
-  const db = getDatabase();
-  if (!db) return NextResponse.json({ submission: { id: newId("submission"), assignmentId: body.assignmentId, studentId: body.studentId, status: "submitted" }, source: "local-fallback" }, { status: 201 });
-
-  await ensureSchema(db);
-  await seedDemoData(db);
-  const identity = await getIdentity(request);
-  if (!identity) return NextResponse.json({ error: "需要登录后提交作业" }, { status: 401 });
-  if (identity.role !== "student") return NextResponse.json({ error: "只有学生可以提交作业" }, { status: 403 });
-  const assignment = await db.prepare("SELECT class_id FROM assignments WHERE id = ? LIMIT 1").bind(body.assignmentId).first<{ class_id: string }>();
-  if (!assignment) return NextResponse.json({ error: "作业不存在" }, { status: 404 });
-  const classId = await resolveClassId(db, identity, assignment.class_id); if (!classId) return NextResponse.json({ error: "你不是该班级成员" }, { status: 403 });
-  const studentId = identity.demo ? (body.studentId ?? "student_1") : await resolveStudentId(db, identity, classId); if (!studentId) return NextResponse.json({ error: "当前账号尚未建立学生档案，请先加入班级" }, { status: 403 });
-  const time = timestamp();
-  const id = newId("submission");
-  await db.prepare("INSERT INTO submissions (id, assignment_id, student_id, content, status, submitted_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(assignment_id, student_id) DO UPDATE SET content = excluded.content, status = 'submitted', submitted_at = excluded.submitted_at, updated_at = excluded.updated_at").bind(id, body.assignmentId, studentId, body.content?.trim() ?? "", "submitted", time, time).run();
-  await writeAudit(db, identity, "submit", "submission", id, `assignment=${body.assignmentId}`);
-  await writeLearningEvent(db, { classId, studentId, eventType: "assignment_submitted", objectType: "submission", objectId: id, payload: { assignmentId: body.assignmentId } });
-  return NextResponse.json({ submission: { id, assignmentId: body.assignmentId, studentId, status: "submitted" }, source: "d1" }, { status: 201 });
+  const body = await request.json().catch(() => null) as Body | null; if (!body?.assignmentId) return NextResponse.json({ error: "缺少作业信息" }, { status: 400 });
+  const db = getDatabase(); if (!db) return NextResponse.json({ submission: { id: newId("submission"), assignmentId: body.assignmentId, status: body.status ?? "submitted" }, source: "local-fallback" }, { status: 201 });
+  await ensureSchema(db); await seedDemoData(db); const identity = await getIdentity(request); if (!identity) return NextResponse.json({ error: "需要登录后提交作业" }, { status: 401 }); if (identity.role !== "student") return NextResponse.json({ error: "只有学生可以提交作业" }, { status: 403 });
+  const assignment = await db.prepare("SELECT id, class_id, status, deadline FROM assignments WHERE id = ? LIMIT 1").bind(body.assignmentId).first<{ id: string; class_id: string; status: string; deadline: string }>(); if (!assignment) return NextResponse.json({ error: "作业不存在" }, { status: 404 });
+  const classId = await resolveClassId(db, identity, assignment.class_id); if (!classId) return NextResponse.json({ error: "你不是该班级成员" }, { status: 403 }); const studentId = identity.demo ? (body.studentId ?? "student_1") : await resolveStudentId(db, identity, classId); if (!studentId) return NextResponse.json({ error: "当前账号尚未建立学生档案，请先加入班级" }, { status: 403 });
+  const requestedStatus = body.status ?? "submitted"; if (requestedStatus === "submitted" && assignment.status === "closed") { const flow = await db.prepare("SELECT allow_late FROM assignment_workflow WHERE assignment_id = ?").bind(assignment.id).first<{ allow_late: number }>(); if (!flow?.allow_late) return NextResponse.json({ error: "作业已截止，教师未开启迟交" }, { status: 409 }); }
+  const now = timestamp(); const existing = await db.prepare("SELECT id, content, attachment_name, status, score, feedback, submitted_at FROM submissions WHERE assignment_id = ? AND student_id = ? LIMIT 1").bind(assignment.id, studentId).first<{ id: string; content: string; attachment_name: string | null; status: string; score: string | null; feedback: string | null; submitted_at: string }>(); const id = existing?.id ?? newId("submission");
+  await db.prepare("INSERT INTO submissions (id, assignment_id, student_id, content, attachment_name, status, score, feedback, submitted_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(assignment_id, student_id) DO UPDATE SET content = excluded.content, attachment_name = excluded.attachment_name, status = excluded.status, submitted_at = CASE WHEN excluded.status = 'submitted' THEN excluded.submitted_at ELSE submissions.submitted_at END, updated_at = excluded.updated_at").bind(id, assignment.id, studentId, body.content?.trim() ?? "", body.attachmentName ?? null, requestedStatus, existing?.score ?? null, existing?.feedback ?? null, now, now).run();
+  if (body.attachmentName && body.attachmentBase64) await db.prepare("INSERT INTO submission_history (id, submission_id, assignment_id, student_id, content, attachment_name, attachment_base64, status, score, feedback, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(newId("submission_version"), id, assignment.id, studentId, body.content?.trim() ?? "", body.attachmentName, body.attachmentBase64, requestedStatus, existing?.score ?? null, existing?.feedback ?? null, now).run(); else await db.prepare("INSERT INTO submission_history (id, submission_id, assignment_id, student_id, content, attachment_name, status, score, feedback, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(newId("submission_version"), id, assignment.id, studentId, body.content?.trim() ?? "", body.attachmentName ?? null, requestedStatus, existing?.score ?? null, existing?.feedback ?? null, now).run();
+  await writeAudit(db, identity, requestedStatus === "draft" ? "save_draft" : "submit", "submission", id, `assignment=${assignment.id}`); if (requestedStatus === "submitted") await writeLearningEvent(db, { classId, studentId, eventType: "assignment_submitted", objectType: "submission", objectId: id, payload: { assignmentId: assignment.id } });
+  return NextResponse.json({ submission: { id, assignmentId: assignment.id, studentId, status: requestedStatus, submittedAt: requestedStatus === "submitted" ? now : existing?.submitted_at ?? null }, source: "d1" }, { status: 201 });
 }
 
 export async function PATCH(request: Request) {
-  const body = await request.json().catch(() => null) as { submissionId?: string; score?: string | number | null; feedback?: string | null } | null;
-  if (!body?.submissionId) return NextResponse.json({ error: "缺少提交编号" }, { status: 400 });
-
-  const score = body.score === null || body.score === undefined ? "" : String(body.score).trim();
-  if (score && (!/^\d{1,3}(?:\.\d{1,2})?$/.test(score) || Number(score) < 0 || Number(score) > 100)) {
-    return NextResponse.json({ error: "分数必须是 0-100 的数字" }, { status: 400 });
-  }
-  const feedback = body.feedback?.trim() ?? "";
-  const db = getDatabase();
-  if (!db) {
-    return NextResponse.json({ submission: { id: body.submissionId, status: "graded", score: score || null, feedback: feedback || null }, source: "local-fallback" });
-  }
-
-  await ensureSchema(db);
-  await seedDemoData(db);
-  const identity = await getIdentity(request);
-  if (!identity) return NextResponse.json({ error: "需要登录后评分" }, { status: 401 });
-  if (identity.role !== "teacher") return NextResponse.json({ error: "只有教师可以评分" }, { status: 403 });
-  const ownership = await db.prepare("SELECT a.class_id FROM submissions s JOIN assignments a ON a.id = s.assignment_id WHERE s.id = ? LIMIT 1").bind(body.submissionId).first<{ class_id: string }>();
-  if (!ownership) return NextResponse.json({ error: "提交记录不存在" }, { status: 404 });
-  if (!(await resolveClassId(db, identity, ownership.class_id))) return NextResponse.json({ error: "你不是该班级教师" }, { status: 403 });
-  const result = await db.prepare("UPDATE submissions SET score = ?, feedback = ?, status = 'graded', updated_at = ? WHERE id = ?").bind(score || null, feedback || null, timestamp(), body.submissionId).run();
-  if (!result.meta.changes) return NextResponse.json({ error: "提交记录不存在" }, { status: 404 });
-  const submission = await db.prepare("SELECT id, assignment_id, student_id, content, status, score, feedback, submitted_at FROM submissions WHERE id = ?").bind(body.submissionId).first();
-  await writeAudit(db, identity, "grade", "submission", body.submissionId, `score=${score}`);
-  const graded = submission as { student_id?: string; assignment_id?: string } | null;
-  if (graded?.student_id) await writeLearningEvent(db, { classId: ownership.class_id, studentId: graded.student_id, eventType: "score_awarded", objectType: "submission", objectId: body.submissionId, payload: { assignmentId: graded.assignment_id, score: score || null } });
-  return NextResponse.json({ submission, source: "d1" });
+  const body = await request.json().catch(() => null) as { submissionId?: string; score?: string | number | null; feedback?: string | null } | null; if (!body?.submissionId) return NextResponse.json({ error: "缺少提交编号" }, { status: 400 });
+  const score = body.score === null || body.score === undefined ? "" : String(body.score).trim(); if (score && (!/^\d{1,3}(?:\.\d{1,2})?$/.test(score) || Number(score) < 0 || Number(score) > 100)) return NextResponse.json({ error: "分数必须是 0-100 的数字" }, { status: 400 });
+  const db = getDatabase(); if (!db) return NextResponse.json({ error: "演示模式不支持评分" }, { status: 503 }); await ensureSchema(db); await seedDemoData(db); const identity = await getIdentity(request); if (!identity || identity.role !== "teacher") return NextResponse.json({ error: "只有教师可以评分" }, { status: 403 });
+  const ownership = await db.prepare("SELECT s.id, s.assignment_id, s.student_id, a.class_id, s.content, s.attachment_name, s.status, s.submitted_at FROM submissions s JOIN assignments a ON a.id = s.assignment_id WHERE s.id = ? LIMIT 1").bind(body.submissionId).first<{ id: string; assignment_id: string; student_id: string; class_id: string; content: string; attachment_name: string | null; status: string; submitted_at: string }>(); if (!ownership) return NextResponse.json({ error: "提交记录不存在" }, { status: 404 }); const classId = await resolveClassId(db, identity, ownership.class_id); if (!classId) return NextResponse.json({ error: "无权操作该提交" }, { status: 403 });
+  const now = timestamp(); await db.prepare("UPDATE submissions SET score = ?, feedback = ?, status = 'graded', updated_at = ? WHERE id = ?").bind(score || null, body.feedback?.trim() || null, now, body.submissionId).run(); await writeAudit(db, identity, "grade", "submission", body.submissionId, `score=${score}`); await writeLearningEvent(db, { classId, studentId: ownership.student_id, eventType: "score_awarded", objectType: "submission", objectId: body.submissionId, payload: { score: score || null } });
+  return NextResponse.json({ submission: { id: ownership.id, assignmentId: ownership.assignment_id, studentId: ownership.student_id, content: ownership.content, attachmentName: ownership.attachment_name, status: "graded", score: score || null, feedback: body.feedback?.trim() || null, submittedAt: ownership.submitted_at }, source: "d1" });
 }

@@ -1,0 +1,45 @@
+{
+  "course": "线性代数",
+  "chapter": "第1章 矩阵基础",
+  "questions": [
+    {
+      "id": "la_q1",
+      "stem": "下列哪一个是 2×2 矩阵？",
+      "options": [
+        "[[1,0],[0,1]]",
+        "[1,2,3]",
+        "[[1,2,3]]",
+        "1"
+      ],
+      "answer": "[[1,0],[0,1]]",
+      "knowledgePoint": "矩阵的阶数",
+      "difficulty": "easy"
+    },
+    {
+      "id": "la_q2",
+      "stem": "若 A 为 2×3、B 为 3×4，则 AB 的阶数为？",
+      "options": [
+        "2×4",
+        "3×3",
+        "4×2",
+        "不能相乘"
+      ],
+      "answer": "2×4",
+      "knowledgePoint": "矩阵乘法的阶数",
+      "difficulty": "medium"
+    },
+    {
+      "id": "la_q3",
+      "stem": "矩阵转置满足哪条公式？",
+      "options": [
+        "(AB)^T=A^TB^T",
+        "(AB)^T=B^TA^T",
+        "(AB)^T=AB",
+        "(AB)^T=-AB"
+      ],
+      "answer": "(AB)^T=B^TA^T",
+      "knowledgePoint": "矩阵转置",
+      "difficulty": "medium"
+    }
+  ]
+}

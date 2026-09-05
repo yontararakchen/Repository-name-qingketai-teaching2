@@ -37,7 +37,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const body = await request.json().catch(() => null) as { action?: "start" | "restart" | "publish" | "end"; chapterId?: string; prompt?: string; options?: string[]; classId?: string } | null;
+  const body = await request.json().catch(() => null) as { action?: "start" | "restart" | "publish" | "end" | "close_activity" | "reopen_activity"; chapterId?: string; prompt?: string; options?: string[]; classId?: string; activityType?: "choice" | "poll" | "short_answer" } | null;
   const db = getDatabase(); if (!db) return NextResponse.json({ error: "演示模式不支持课堂持久化" }, { status: 503 });
   await ensureSchema(db); await seedDemoData(db); const identity = await getIdentity(request); if (!identity) return NextResponse.json({ error: "需要登录后操作课堂" }, { status: 401 });
   if (identity.role !== "teacher") return NextResponse.json({ error: "只有教师可以控制课堂" }, { status: 403 });
@@ -51,19 +51,23 @@ export async function POST(request: Request) {
   const session = await db.prepare("SELECT id FROM lesson_sessions WHERE class_id = ? AND status = 'active' ORDER BY start_time DESC LIMIT 1").bind(classId).first<{ id: string }>();
   if (!session) return NextResponse.json({ error: "没有进行中的课堂" }, { status: 409 });
   if (body?.action === "end") { await db.prepare("UPDATE lesson_sessions SET status = 'ended', end_time = ? WHERE id = ?").bind(timestamp(), session.id).run(); await writeAudit(db, identity, "end", "lesson_session", session.id); return NextResponse.json({ session: { id: session.id, status: "ended" }, source: "d1" }); }
-  const prompt = body?.prompt?.trim(); const options = (body?.options ?? []).map((option) => option.trim()).filter(Boolean).slice(0, 6);
-  if (!prompt || options.length < 2) return NextResponse.json({ error: "题目和至少两个选项不能为空" }, { status: 400 });
-  const id = newId("activity"); await db.prepare("INSERT INTO activities (id, session_id, activity_type, prompt, options, status, created_at) VALUES (?, ?, 'choice', ?, ?, 'published', ?)").bind(id, session.id, prompt, JSON.stringify(options), timestamp()).run(); await writeAudit(db, identity, "publish", "activity", id, prompt); return NextResponse.json({ activity: { id, type: "choice", prompt, options, status: "published" }, source: "d1" }, { status: 201 });
+  const prompt = body?.prompt?.trim(); const activityType = body?.activityType ?? "choice"; const options = (body?.options ?? []).map((option) => option.trim()).filter(Boolean).slice(0, 6);
+  if (!prompt || (activityType !== "short_answer" && options.length < 2)) return NextResponse.json({ error: activityType === "short_answer" ? "题目不能为空" : "题目和至少两个选项不能为空" }, { status: 400 });
+  const id = newId("activity"); await db.prepare("INSERT INTO activities (id, session_id, activity_type, prompt, options, status, created_at) VALUES (?, ?, ?, ?, ?, 'published', ?)").bind(id, session.id, activityType, prompt, JSON.stringify(options), timestamp()).run(); await writeAudit(db, identity, "publish", "activity", id, prompt); return NextResponse.json({ activity: { id, type: activityType, prompt, options, status: "published" }, source: "d1" }, { status: 201 });
 }
 
 export async function PATCH(request: Request) {
-  const body = await request.json().catch(() => null) as { activityId?: string; studentId?: string; answer?: string } | null;
+  const body = await request.json().catch(() => null) as { activityId?: string; studentId?: string; answer?: string; action?: "close" | "reopen" } | null;
+  if (body?.action && body.activityId) {
+    const db = getDatabase(); if (!db) return NextResponse.json({ error: "演示模式不支持活动管理" }, { status: 503 }); await ensureSchema(db); await seedDemoData(db); const identity = await getIdentity(request); if (!identity || identity.role !== "teacher") return NextResponse.json({ error: "只有教师可以管理活动" }, { status: 403 }); const activity = await db.prepare("SELECT ls.class_id FROM activities a JOIN lesson_sessions ls ON ls.id = a.session_id WHERE a.id = ? LIMIT 1").bind(body.activityId).first<{ class_id: string }>(); if (!activity || !(await resolveClassId(db, identity, activity.class_id))) return NextResponse.json({ error: "活动不存在或无权操作" }, { status: 404 }); await db.prepare("UPDATE activities SET status = ? WHERE id = ?").bind(body.action === "close" ? "closed" : "published", body.activityId).run(); return NextResponse.json({ updated: true, status: body.action === "close" ? "closed" : "published" });
+  }
   if (!body?.activityId || !body.answer?.trim()) return NextResponse.json({ error: "请选择一个答案" }, { status: 400 });
   const db = getDatabase(); if (!db) return NextResponse.json({ response: { activityId: body.activityId, answer: body.answer }, source: "local-fallback" });
   await ensureSchema(db); await seedDemoData(db); const identity = await getIdentity(request); if (!identity) return NextResponse.json({ error: "需要登录后作答" }, { status: 401 });
   if (identity.role !== "student") return NextResponse.json({ error: "只有学生可以提交课堂答案" }, { status: 403 });
-  const activity = await db.prepare("SELECT a.session_id, ls.class_id FROM activities a JOIN lesson_sessions ls ON ls.id = a.session_id WHERE a.id = ? LIMIT 1").bind(body.activityId).first<{ session_id: string; class_id: string }>();
+  const activity = await db.prepare("SELECT a.session_id, a.status, ls.class_id FROM activities a JOIN lesson_sessions ls ON ls.id = a.session_id WHERE a.id = ? LIMIT 1").bind(body.activityId).first<{ session_id: string; class_id: string; status: string }>();
   if (!activity) return NextResponse.json({ error: "课堂题目不存在" }, { status: 404 });
+  if (activity.status === "closed") return NextResponse.json({ error: "该活动已关闭" }, { status: 409 });
   const classId = await resolveClassId(db, identity, activity.class_id); if (!classId) return NextResponse.json({ error: "你不是该班级成员" }, { status: 403 });
   const studentId = await resolveStudentId(db, identity, classId);
   if (!studentId) return NextResponse.json({ error: "当前账号不是本班学生" }, { status: 403 });

@@ -66,6 +66,15 @@ export const schemaStatements = [
     created_at TEXT NOT NULL,
     FOREIGN KEY (chapter_id) REFERENCES chapters(id)
   )`,
+  `CREATE TABLE IF NOT EXISTS material_blobs (
+    material_id TEXT PRIMARY KEY,
+    content_type TEXT NOT NULL,
+    content_base64 TEXT NOT NULL,
+    uploaded_by TEXT,
+    version INTEGER NOT NULL DEFAULT 1,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (material_id) REFERENCES materials(id)
+  )`,
   `CREATE TABLE IF NOT EXISTS students (
     id TEXT PRIMARY KEY,
     class_id TEXT NOT NULL,
@@ -314,6 +323,39 @@ export const schemaStatements = [
     FOREIGN KEY (assignment_id) REFERENCES assignments(id),
     FOREIGN KEY (student_id) REFERENCES students(id)
   )`,
+  `CREATE TABLE IF NOT EXISTS submission_history (
+    id TEXT PRIMARY KEY,
+    submission_id TEXT NOT NULL,
+    assignment_id TEXT NOT NULL,
+    student_id TEXT NOT NULL,
+    content TEXT NOT NULL DEFAULT '',
+    attachment_name TEXT,
+    attachment_base64 TEXT,
+    status TEXT NOT NULL,
+    score TEXT,
+    feedback TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (submission_id) REFERENCES submissions(id)
+  )`,
+  `CREATE TABLE IF NOT EXISTS assignment_workflow (
+    assignment_id TEXT PRIMARY KEY,
+    start_at TEXT,
+    due_at TEXT,
+    allow_late INTEGER NOT NULL DEFAULT 0,
+    published_at TEXT,
+    closed_at TEXT,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (assignment_id) REFERENCES assignments(id)
+  )`,
+  `CREATE TABLE IF NOT EXISTS personalized_grades (
+    response_id TEXT PRIMARY KEY,
+    score REAL NOT NULL,
+    total INTEGER NOT NULL,
+    feedback TEXT NOT NULL DEFAULT '',
+    graded_by TEXT,
+    graded_at TEXT NOT NULL,
+    FOREIGN KEY (response_id) REFERENCES personalized_responses(id)
+  )`,
   `CREATE INDEX IF NOT EXISTS idx_chapters_class_id ON chapters(class_id)`,
   `CREATE INDEX IF NOT EXISTS idx_materials_chapter_id ON materials(chapter_id)`,
   `CREATE INDEX IF NOT EXISTS idx_assignments_class_id ON assignments(class_id)`,
@@ -334,6 +376,7 @@ export const schemaStatements = [
   `CREATE INDEX IF NOT EXISTS idx_personalized_assignments_student ON personalized_assignments(class_id, student_id, status, updated_at)`,
   `CREATE INDEX IF NOT EXISTS idx_personalized_responses_assignment ON personalized_responses(personalized_assignment_id, student_id)`,
   `CREATE INDEX IF NOT EXISTS idx_submissions_assignment_id ON submissions(assignment_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_submission_history_submission ON submission_history(submission_id, created_at)`,
   `CREATE INDEX IF NOT EXISTS idx_class_members_user_id ON class_members(user_id)`,
   `CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at)`,
 ];

@@ -55,7 +55,7 @@ export async function GET(request: Request) {
     const response = NextResponse.json({
       class: { id: classRow.id, name: classRow.name, courseName: classRow.course_name, term: classRow.term, joinCode: classRow.join_code, teacherName: classRow.teacher_name },
       chapters: chapterRows.results.map((row) => ({ id: row.id, name: row.name, files: row.files_count, status: row.status === "published" ? "已发布" : "草稿" })),
-      materials: materialRows.results.map((row) => ({ id: row.id, chapterId: row.chapter_id, name: row.name, type: row.file_type, size: row.size_label, downloadUrl: row.download_url })),
+      materials: materialRows.results.map((row) => ({ id: row.id, chapterId: row.chapter_id, name: row.name, type: row.file_type, size: row.size_label, downloadUrl: `/api/materials?id=${encodeURIComponent(row.id)}` })),
       assignments: assignmentRows.results.map((row) => ({ id: row.id, name: row.name, chapterId: row.chapter_id, chapter: row.chapter_id ? (chapterRows.results.find((chapter) => chapter.id === row.chapter_id)?.name ?? "未分类") : "未分类", deadline: row.deadline, status: assignmentStatus[row.status] ?? row.status, submitted: `${row.submitted_count}/${row.total_students}`, description: row.description })),
       students: studentRows.results,
       submissions: submissionRows.results,
