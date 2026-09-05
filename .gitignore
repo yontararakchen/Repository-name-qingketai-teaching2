@@ -35,6 +35,7 @@ next-env.d.ts
 /dist/
 /site-stage*/
 /site-dist*.tar.gz
+/site-auth*.tar.gz
 /.wrangler/
 /outputs/
 /work/
