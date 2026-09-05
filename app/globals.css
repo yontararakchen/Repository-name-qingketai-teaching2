@@ -36,18 +36,6 @@ button { cursor: pointer; }
 
 .app-shell { min-height: 100vh; background: var(--page); }
 
-.login-shell { display: grid; place-items: center; min-height: 100vh; padding: 24px; background: radial-gradient(circle at 50% 0%, #eaf3ff 0%, var(--page) 48%); }
-.login-card { width: min(100%, 420px); padding: 34px 36px 30px; background: rgba(255,255,255,.96); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 20px 60px rgba(37,99,235,.1); }
-.login-brand { display: flex; align-items: center; gap: 11px; margin-bottom: 42px; }
-.login-heading h1 { margin-bottom: 7px; font-size: 25px; }
-.login-heading > p:last-child { margin-bottom: 22px; color: var(--muted); font-size: 13px; }
-.login-role-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 22px; padding: 4px; background: #f1f5fb; border: 1px solid var(--line); border-radius: 9px; }
-.login-role-tabs button { padding: 8px; color: var(--muted); background: transparent; border: 0; border-radius: 6px; font-size: 13px; }
-.login-role-tabs button.login-role-active { color: var(--primary); background: #fff; box-shadow: 0 1px 4px rgba(30,64,175,.11); font-weight: 600; }
-.login-label { display: block; margin: 13px 0 6px; color: #53657f; font-size: 12px; font-weight: 600; }
-.login-button { width: 100%; margin-top: 23px; }
-.login-hint { margin: 16px 0 0; color: #9aa8b9; font-size: 11px; text-align: center; }
-
 .topbar {
   position: sticky;
   top: 0;
