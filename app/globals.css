@@ -263,6 +263,14 @@ h3 { margin-bottom: 3px; color: #25364f; font-size: 14px; }
 .ai-source-row { color: #8a9bb0; font-size: 10px; }
 .ai-suggestion-list { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 11px; }
 .ai-suggestion-list span { padding: 5px 8px; color: #486a99; background: #eef5ff; border-radius: 99px; font-size: 10px; }
+.personalized-question-list { display: grid; gap: 8px; margin-top: 12px; }
+.personalized-question { display: grid; gap: 3px; padding: 9px 10px; background: #fafcff; border: 1px solid #e5edf7; border-radius: 8px; }
+.personalized-question strong { color: #314e73; font-size: 12px; line-height: 1.5; }
+.personalized-question span { color: #8494aa; font-size: 10px; }
+.personalized-student-panel { border-left: 3px solid #6c9ee8; }
+.personalized-student-card { padding: 12px 0; }
+.compact-choice-list { margin-top: 8px; }
+.compact-choice-list .choice-item { padding: 6px 8px; font-size: 11px; }
 .score-distribution { display: grid; gap: 10px; margin: 4px 0 24px; }
 .event-row { display: flex; align-items: flex-start; gap: 9px; padding: 9px 0; border-bottom: 1px solid var(--line); }
 .event-row strong { color: #405b7c; font-size: 11px; }.event-row p { margin: 3px 0 0; color: #9aa8b9; font-size: 10px; }
