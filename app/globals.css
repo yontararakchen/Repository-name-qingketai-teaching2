@@ -271,6 +271,11 @@ h3 { margin-bottom: 3px; color: #25364f; font-size: 14px; }
 .personalized-student-card { padding: 12px 0; }
 .compact-choice-list { margin-top: 8px; }
 .compact-choice-list .choice-item { padding: 6px 8px; font-size: 11px; }
+.audit-list { display: grid; gap: 0; margin-top: 14px; }
+.audit-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 10px 0; border-top: 1px solid var(--line); }
+.audit-row strong { color: #405b7c; font-size: 11px; }
+.audit-row p { margin: 3px 0 0; color: #8494aa; font-size: 10px; }
+.audit-row time { color: #9aa8b9; white-space: nowrap; font-size: 10px; }
 .score-distribution { display: grid; gap: 10px; margin: 4px 0 24px; }
 .event-row { display: flex; align-items: flex-start; gap: 9px; padding: 9px 0; border-bottom: 1px solid var(--line); }
 .event-row strong { color: #405b7c; font-size: 11px; }.event-row p { margin: 3px 0 0; color: #9aa8b9; font-size: 10px; }
