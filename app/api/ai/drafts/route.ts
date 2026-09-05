@@ -7,6 +7,16 @@ type DraftQuestion = { id: string; prompt: string; options: string[]; answer: st
 
 function buildDraft(materialName: string, materialType: string, text: string): { summary: string; knowledgePoints: string[]; questions: DraftQuestion[] } {
   const source = `${materialName} ${text}`.toLowerCase();
+  if (/(线性代数|矩阵|行列式|特征值|特征向量|向量|线性相关|线性无关|秩)/i.test(source)) {
+    return {
+      summary: `已从“${materialName}”识别出线性代数主题，建议围绕矩阵运算、特征值和线性关系检查理解。`,
+      knowledgePoints: ["矩阵与线性变换", "特征值", "线性相关性"],
+      questions: [
+        { id: "linear-algebra-1", prompt: "设 A = [[1, 2], [2, 1]]，则矩阵 A 的特征值是？", options: ["-1 和 3", "1 和 2", "0 和 3", "-2 和 2"], answer: "-1 和 3", reason: "材料包含矩阵与特征值主题；A 的特征多项式为 (1-λ)^2-4。" },
+        { id: "linear-algebra-2", prompt: "下列哪组向量在线性代数中称为线性无关？", options: ["只有零向量的一组", "不存在不全为零的线性组合使结果为零", "所有向量都相等", "向量个数一定大于维数"], answer: "不存在不全为零的线性组合使结果为零", reason: "检查材料中线性无关的定义。" },
+      ],
+    };
+  }
   if (/(循环|for|while|range)/i.test(source)) {
     return {
       summary: `已从“${materialName}”识别出循环结构主题，建议围绕遍历、次数和循环变量检查理解。`,
