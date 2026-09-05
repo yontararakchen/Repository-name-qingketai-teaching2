@@ -46,6 +46,7 @@ export async function POST(request: Request) {
     ["demo_submission_3", "demo_assignment_2", "student_1", "三个判断情境已完成。", "86", "条件分支组织得不错。", "graded"],
     ["demo_submission_4", "demo_assignment_2", "student_3", "已提交小测答案。", null, null, "submitted"],
     ["demo_submission_5", "demo_assignment_3", "student_4", "循环代码已提交，等待批改。", null, null, "submitted"],
+    ["demo_submission_6", "demo_assignment_3", "student_1", "完成循环练习并提交代码。", "90", "能够正确使用 for 循环遍历序列。", "graded"],
   ];
   for (const [id, assignmentId, studentId, content, score, feedback, status] of submissionRows) await db.prepare("INSERT INTO submissions (id, assignment_id, student_id, content, status, score, feedback, submitted_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(assignment_id, student_id) DO UPDATE SET content = excluded.content, status = excluded.status, score = excluded.score, feedback = excluded.feedback, submitted_at = excluded.submitted_at, updated_at = excluded.updated_at").bind(id, assignmentId, studentId, content, status, score, feedback, createdAt, createdAt).run();
   const taskRecords = [["demo_task_record_1", "demo_task_preview", "student_1"], ["demo_task_record_2", "demo_task_preview", "student_2"], ["demo_task_record_3", "demo_task_material", "student_1"], ["demo_task_record_4", "demo_task_assignment", "student_3"], ["demo_task_record_5", "demo_task_review", "student_4"]];
