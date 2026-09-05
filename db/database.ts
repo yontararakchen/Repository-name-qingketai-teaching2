@@ -18,7 +18,10 @@ function now() {
 
 export async function seedDemoData(db: Database) {
   const existing = await db.prepare("SELECT id FROM classes LIMIT 1").first<{ id: string }>();
-  if (existing) return;
+  if (existing) {
+    await seedIdentityData(db);
+    return;
+  }
 
   const createdAt = now();
   await db.batch([
@@ -38,6 +41,17 @@ export async function seedDemoData(db: Database) {
     db.prepare("INSERT INTO submissions (id, assignment_id, student_id, content, status, score, feedback, submitted_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").bind("submission_1", "assignment_2", "student_2", "已完成条件判断练习。", "graded", "88", "思路清晰，注意边界条件。", createdAt, createdAt),
     db.prepare("INSERT INTO submissions (id, assignment_id, student_id, content, status, score, feedback, submitted_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").bind("submission_2", "assignment_1", "student_4", "已完成变量基础练习。", "graded", "92", "基础掌握良好。", createdAt, createdAt),
   ]);
+  await seedIdentityData(db);
+}
+
+async function seedIdentityData(db: Database) {
+  const createdAt = now();
+  await db.batch([
+    db.prepare("INSERT OR IGNORE INTO users (id, email, name, role, created_at) VALUES (?, ?, ?, ?, ?)").bind("user_teacher_1", "teacher@example.com", "王老师", "teacher", createdAt),
+    db.prepare("INSERT OR IGNORE INTO users (id, email, name, role, created_at) VALUES (?, ?, ?, ?, ?)").bind("user_student_1", "student@example.com", "张三", "student", createdAt),
+    db.prepare("INSERT OR IGNORE INTO class_members (class_id, user_id, role, joined_at) VALUES (?, ?, ?, ?)").bind("class_python", "user_teacher_1", "teacher", createdAt),
+    db.prepare("INSERT OR IGNORE INTO class_members (class_id, user_id, role, joined_at) VALUES (?, ?, ?, ?)").bind("class_python", "user_student_1", "student", createdAt),
+  ]);
 }
 
 export function newId(prefix: string) {
@@ -47,4 +61,3 @@ export function newId(prefix: string) {
 export function timestamp() {
   return now();
 }
-
