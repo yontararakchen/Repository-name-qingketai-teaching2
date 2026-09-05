@@ -66,6 +66,7 @@ function SectionTitle({ title, description, action }: { title: string; descripti
 
 export default function Home() {
   const [role, setRole] = useState<Role>("teacher");
+  const [loggedIn, setLoggedIn] = useState(false);
   const [page, setPage] = useState<Page>("overview");
   const [showCreate, setShowCreate] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -109,6 +110,8 @@ export default function Home() {
     setShowCreate(false);
   }
 
+  if (!loggedIn) return <LoginScreen role={role} onRoleChange={setRole} onLogin={() => setLoggedIn(true)} />;
+
   return <div className="app-shell">
     <header className="topbar">
       <div className="brand-lockup"><div className="brand-mark">教</div><div><p className="brand-name">轻课台</p><p className="brand-subtitle">轻量智能教学系统</p></div></div>
@@ -122,6 +125,21 @@ export default function Home() {
     {notice && <button type="button" className="toast" onClick={() => setNotice("")} aria-label="关闭提示">{notice}<span>×</span></button>}
     {showCreate && <CreateAssignmentModal onClose={() => setShowCreate(false)} onSubmit={(payload) => { void handleCreateAssignment(payload).catch(() => setNotice("保存失败，请稍后重试。")); }} />}
   </div>;
+}
+
+function LoginScreen({ role, onRoleChange, onLogin }: { role: Role; onRoleChange: (role: Role) => void; onLogin: () => void }) {
+  const isTeacher = role === "teacher";
+  return <main className="login-shell">
+    <section className="login-card">
+      <div className="login-brand"><div className="brand-mark">教</div><div><p className="brand-name">轻课台</p><p className="brand-subtitle">轻量智能教学系统</p></div></div>
+      <div className="login-heading"><p className="eyebrow">DEMO LOGIN</p><h1>欢迎回到轻课台</h1><p>选择身份后进入演示班级，体验当前版本的核心流程。</p></div>
+      <div className="login-role-tabs" role="tablist" aria-label="选择登录身份"><button type="button" className={isTeacher ? "login-role-active" : ""} onClick={() => onRoleChange("teacher")}>教师登录</button><button type="button" className={!isTeacher ? "login-role-active" : ""} onClick={() => onRoleChange("student")}>学生登录</button></div>
+      <label className="login-label" htmlFor="login-account">账号</label><input id="login-account" className="form-input" value={isTeacher ? "teacher@example.com" : "student@example.com"} readOnly />
+      <label className="login-label" htmlFor="login-password">密码</label><input id="login-password" className="form-input" value="123456" readOnly type="password" />
+      <button type="button" className="primary-button login-button" onClick={onLogin}>进入{isTeacher ? "教师" : "学生"}端</button>
+      <p className="login-hint">当前为轻量演示登录，账号仅用于区分教师与学生操作。</p>
+    </section>
+  </main>;
 }
 
 function TeacherView({ page, onCreate, data }: { page: Page; onCreate: () => void; data: ClassroomData }) {
