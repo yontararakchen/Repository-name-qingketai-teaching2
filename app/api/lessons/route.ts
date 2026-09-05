@@ -31,13 +31,14 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const body = await request.json().catch(() => null) as { action?: "start" | "publish" | "end"; chapterId?: string; prompt?: string; options?: string[] } | null;
+  const body = await request.json().catch(() => null) as { action?: "start" | "restart" | "publish" | "end"; chapterId?: string; prompt?: string; options?: string[] } | null;
   const db = getDatabase(); if (!db) return NextResponse.json({ error: "演示模式不支持课堂持久化" }, { status: 503 });
   await ensureSchema(db); await seedDemoData(db); const identity = await getIdentity(request); if (!identity) return NextResponse.json({ error: "需要登录后操作课堂" }, { status: 401 });
   if (!identity.demo && identity.role !== "teacher") return NextResponse.json({ error: "只有教师可以控制课堂" }, { status: 403 });
-  if (body?.action === "start") {
+  if (body?.action === "start" || body?.action === "restart") {
     const active = await db.prepare("SELECT id FROM lesson_sessions WHERE class_id = ? AND status = 'active' LIMIT 1").bind("class_python").first<{ id: string }>();
-    if (active) return NextResponse.json({ error: "当前已有进行中的课堂" }, { status: 409 });
+    if (active && body.action === "start") return NextResponse.json({ error: "当前已有进行中的课堂，请点击“重新开始体验”" }, { status: 409 });
+    if (active && body.action === "restart") await db.prepare("UPDATE lesson_sessions SET status = 'ended', end_time = ? WHERE id = ?").bind(timestamp(), active.id).run();
     const id = newId("lesson"); await db.prepare("INSERT INTO lesson_sessions (id, class_id, chapter_id, teacher_user_id, start_time, status) VALUES (?, ?, ?, ?, ?, 'active')").bind(id, "class_python", body.chapterId ?? "chapter_3", identity.demo ? null : identity.id, timestamp()).run(); await writeAudit(db, identity, "start", "lesson_session", id); return NextResponse.json({ session: { id, status: "active" }, source: "d1" }, { status: 201 });
   }
   const session = await db.prepare("SELECT id FROM lesson_sessions WHERE class_id = ? AND status = 'active' ORDER BY start_time DESC LIMIT 1").bind("class_python").first<{ id: string }>();
