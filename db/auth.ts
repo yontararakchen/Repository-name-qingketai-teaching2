@@ -9,7 +9,8 @@ export type Identity = { id: string; email: string; name: string; role: Role; de
  */
 export async function getIdentity(request: Request): Promise<Identity | null> {
   const cookie = request.headers.get("cookie") ?? "";
-  const demoRole = request.headers.get("x-demo-role") ?? cookie.match(/(?:^|;\s*)demo-role=(teacher|student)(?:;|$)/)?.[1];
+  const queryDemo = new URL(request.url).searchParams.get("demo") ?? (() => { try { return new URL(request.headers.get("referer") ?? "").searchParams.get("demo"); } catch { return null; } })();
+  const demoRole = request.headers.get("x-demo-role") ?? (queryDemo === "teacher" || queryDemo === "student" ? queryDemo : undefined) ?? cookie.match(/(?:^|;\s*)demo-role=(teacher|student)(?:;|$)/)?.[1];
   const activeClassId = cookie.match(/(?:^|;\s*)active-class-id=([^;]+)/)?.[1];
   if (demoRole === "teacher" || demoRole === "student") return { id: `demo-${demoRole}`, email: `${demoRole}@example.com`, name: demoRole === "teacher" ? "王老师" : "张三", role: demoRole, demo: true, activeClassId };
   const userId = request.headers.get("oai-authenticated-user-id");
