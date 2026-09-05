@@ -21,6 +21,8 @@ const groups = [
     ],
   },
 ];
+const teacherHeaders = { "Content-Type": "application/json", "x-demo-role": "teacher" };
+const studentHeaders = { "Content-Type": "application/json", "x-demo-role": "student" };
 
 async function request(path, options) {
   const response = await fetch(`${baseUrl}${path}`, options);
@@ -43,7 +45,7 @@ const created = [];
 for (const group of groups) {
   const assignmentResult = await request("/api/assignments", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: teacherHeaders,
     body: JSON.stringify(group.assignment),
   });
   assert(assignmentResult.response.status === 201, `${group.label}创建作业应返回 201`);
@@ -54,7 +56,7 @@ for (const group of groups) {
   for (const submission of group.submissions) {
     const submissionResult = await request("/api/submissions", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: studentHeaders,
       body: JSON.stringify({ assignmentId, ...submission }),
     });
     assert(submissionResult.response.status === 201, `${group.label}提交应返回 201`);
@@ -64,14 +66,14 @@ for (const group of groups) {
 
 const invalidAssignment = await request("/api/assignments", {
   method: "POST",
-  headers: { "Content-Type": "application/json" },
+  headers: teacherHeaders,
   body: JSON.stringify({ chapterId: "chapter_3" }),
 });
 assert(invalidAssignment.response.status === 400, "空作业名称应返回 400");
 
 const invalidSubmission = await request("/api/submissions", {
   method: "POST",
-  headers: { "Content-Type": "application/json" },
+  headers: studentHeaders,
   body: JSON.stringify({ studentId: "student_1" }),
 });
 assert(invalidSubmission.response.status === 400, "缺少作业编号应返回 400");
@@ -93,7 +95,7 @@ const gradedSubmission = latest.body.submissions.find((item) => item.assignment_
 assert(gradedSubmission, "评分测试需要一条提交记录");
 const gradeResult = await request("/api/submissions", {
   method: "PATCH",
-  headers: { "Content-Type": "application/json" },
+  headers: teacherHeaders,
   body: JSON.stringify({ submissionId: gradedSubmission.id, score: "95", feedback: "回答完整，继续保持。" }),
 });
 assert(gradeResult.response.status === 200, "教师评分应返回 200");
@@ -102,7 +104,7 @@ assert(gradeResult.body.submission.status === "graded" && gradeResult.body.submi
 
 const invalidGrade = await request("/api/submissions", {
   method: "PATCH",
-  headers: { "Content-Type": "application/json" },
+  headers: teacherHeaders,
   body: JSON.stringify({ submissionId: gradedSubmission.id, score: "101" }),
 });
 assert(invalidGrade.response.status === 400, "超出范围的分数应返回 400");

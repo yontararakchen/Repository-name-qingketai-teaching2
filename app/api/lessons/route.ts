@@ -18,8 +18,8 @@ async function readLesson(db: NonNullable<ReturnType<typeof getDatabase>>, ident
     session: { id: session.id, classId: session.class_id, chapterId: session.chapter_id, startTime: session.start_time, endTime: session.end_time, status: session.status },
     activities: activityResult.results.map((activity) => {
       const responses = responseResult.results.filter((response) => response.activity_id === activity.id);
-      const currentStudentId = identity?.id === "user_student_1" ? "student_1" : identity?.id;
-      return { id: activity.id, sessionId: activity.session_id, type: activity.activity_type, prompt: activity.prompt, options: JSON.parse(activity.options || "[]") as string[], status: activity.status, responses: responses.length, distribution: Object.fromEntries((JSON.parse(activity.options || "[]") as string[]).map((option) => [option, responses.filter((response) => response.answer === option).length])), myAnswer: identity?.role === "student" && !identity.demo ? responses.find((response) => response.student_id === currentStudentId)?.answer ?? null : null };
+      const currentStudentId = identity?.demo ? "student_1" : identity?.id === "user_student_1" ? "student_1" : identity?.id;
+      return { id: activity.id, sessionId: activity.session_id, type: activity.activity_type, prompt: activity.prompt, options: JSON.parse(activity.options || "[]") as string[], status: activity.status, responses: responses.length, distribution: Object.fromEntries((JSON.parse(activity.options || "[]") as string[]).map((option) => [option, responses.filter((response) => response.answer === option).length])), myAnswer: identity?.role === "student" ? responses.find((response) => response.student_id === currentStudentId)?.answer ?? null : null };
     }),
   };
 }
@@ -34,7 +34,7 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => null) as { action?: "start" | "restart" | "publish" | "end"; chapterId?: string; prompt?: string; options?: string[] } | null;
   const db = getDatabase(); if (!db) return NextResponse.json({ error: "演示模式不支持课堂持久化" }, { status: 503 });
   await ensureSchema(db); await seedDemoData(db); const identity = await getIdentity(request); if (!identity) return NextResponse.json({ error: "需要登录后操作课堂" }, { status: 401 });
-  if (!identity.demo && identity.role !== "teacher") return NextResponse.json({ error: "只有教师可以控制课堂" }, { status: 403 });
+  if (identity.role !== "teacher") return NextResponse.json({ error: "只有教师可以控制课堂" }, { status: 403 });
   if (body?.action === "start" || body?.action === "restart") {
     const active = await db.prepare("SELECT id FROM lesson_sessions WHERE class_id = ? AND status = 'active' LIMIT 1").bind("class_python").first<{ id: string }>();
     if (active && body.action === "start" && identity.role !== "teacher") return NextResponse.json({ error: "当前已有进行中的课堂，请结束当前课堂后再开始" }, { status: 409 });
@@ -54,8 +54,10 @@ export async function PATCH(request: Request) {
   if (!body?.activityId || !body.answer?.trim()) return NextResponse.json({ error: "请选择一个答案" }, { status: 400 });
   const db = getDatabase(); if (!db) return NextResponse.json({ response: { activityId: body.activityId, answer: body.answer }, source: "local-fallback" });
   await ensureSchema(db); await seedDemoData(db); const identity = await getIdentity(request); if (!identity) return NextResponse.json({ error: "需要登录后作答" }, { status: 401 });
-  if (!identity.demo && identity.role !== "student") return NextResponse.json({ error: "只有学生可以提交课堂答案" }, { status: 403 });
-  const studentId = body.studentId ?? "student_1"; const now = timestamp(); const id = newId("response");
+  if (identity.role !== "student") return NextResponse.json({ error: "只有学生可以提交课堂答案" }, { status: 403 });
+  const studentId = identity.demo ? "student_1" : ((await db.prepare("SELECT st.id FROM students st JOIN class_members cm ON cm.class_id = st.class_id AND cm.user_id = ? AND cm.role = 'student' WHERE st.class_id = ? LIMIT 1").bind(identity.id, "class_python").first<{ id: string }>())?.id);
+  if (!studentId) return NextResponse.json({ error: "当前账号不是本班学生" }, { status: 403 });
+  const now = timestamp(); const id = newId("response");
   const activity = await db.prepare("SELECT session_id FROM activities WHERE id = ?").bind(body.activityId).first<{ session_id: string }>();
   await db.prepare("INSERT INTO activity_responses (id, activity_id, student_id, answer, submitted_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(activity_id, student_id) DO UPDATE SET answer = excluded.answer, submitted_at = excluded.submitted_at").bind(id, body.activityId, studentId, body.answer.trim(), now).run(); await writeAudit(db, identity, "respond", "activity", body.activityId, body.answer.trim()); await writeLearningEvent(db, { classId: "class_python", studentId, sessionId: activity?.session_id, eventType: "activity_submitted", objectType: "activity", objectId: body.activityId, payload: { answer: body.answer.trim() } }); return NextResponse.json({ response: { id, activityId: body.activityId, studentId, answer: body.answer.trim() }, source: "d1" });
 }

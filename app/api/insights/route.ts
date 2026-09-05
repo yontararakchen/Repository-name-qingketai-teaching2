@@ -68,7 +68,7 @@ export async function POST(request: Request) {
   if (!body?.eventType || !allowed.includes(body.eventType) || !body.objectType) return NextResponse.json({ error: "学习事件格式不正确" }, { status: 400 });
   const db = getDatabase(); if (!db) return NextResponse.json({ event: { eventType: body.eventType }, source: "local-fallback" }, { status: 201 });
   await ensureSchema(db); await seedDemoData(db); const identity = await getIdentity(request); if (!identity) return NextResponse.json({ error: "需要登录后记录学习行为" }, { status: 401 });
-  if (!identity.demo && identity.role !== "student") return NextResponse.json({ error: "只有学生可以记录学习行为" }, { status: 403 });
+  if (identity.role !== "student") return NextResponse.json({ error: "只有学生可以记录学习行为" }, { status: 403 });
   const studentId = identity.demo ? "student_1" : ((await db.prepare("SELECT st.id FROM students st JOIN users u ON u.name = st.name WHERE st.class_id = ? AND u.id = ? LIMIT 1").bind("class_python", identity.id).first<{ id: string }>())?.id);
   if (!studentId) return NextResponse.json({ error: "未找到学生成员" }, { status: 403 });
   await writeLearningEvent(db, { classId: "class_python", studentId, sessionId: body.sessionId, eventType: body.eventType, objectType: body.objectType, objectId: body.objectId, payload: body.payload });

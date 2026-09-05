@@ -14,7 +14,7 @@ export async function POST(request: Request) {
   await seedDemoData(db);
   const identity = await getIdentity(request);
   if (!identity) return NextResponse.json({ error: "需要登录后提交作业" }, { status: 401 });
-  if (!identity.demo && identity.role !== "student") return NextResponse.json({ error: "只有学生可以提交作业" }, { status: 403 });
+  if (identity.role !== "student") return NextResponse.json({ error: "只有学生可以提交作业" }, { status: 403 });
   if (!identity.demo) {
     const member = await db.prepare("SELECT 1 FROM class_members cm JOIN assignments a ON a.class_id = cm.class_id WHERE cm.user_id = ? AND cm.role = 'student' AND a.id = ?").bind(identity.id, body.assignmentId).first();
     if (!member) return NextResponse.json({ error: "你不是该班级成员" }, { status: 403 });
@@ -45,7 +45,7 @@ export async function PATCH(request: Request) {
   await seedDemoData(db);
   const identity = await getIdentity(request);
   if (!identity) return NextResponse.json({ error: "需要登录后评分" }, { status: 401 });
-  if (!identity.demo && identity.role !== "teacher") return NextResponse.json({ error: "只有教师可以评分" }, { status: 403 });
+  if (identity.role !== "teacher") return NextResponse.json({ error: "只有教师可以评分" }, { status: 403 });
   const result = await db.prepare("UPDATE submissions SET score = ?, feedback = ?, status = 'graded', updated_at = ? WHERE id = ?").bind(score || null, feedback || null, timestamp(), body.submissionId).run();
   if (!result.meta.changes) return NextResponse.json({ error: "提交记录不存在" }, { status: 404 });
   const submission = await db.prepare("SELECT id, assignment_id, student_id, content, status, score, feedback, submitted_at FROM submissions WHERE id = ?").bind(body.submissionId).first();

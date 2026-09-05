@@ -14,7 +14,7 @@ export async function POST(request: Request) {
   await seedDemoData(db);
   const identity = await getIdentity(request);
   if (!identity) return NextResponse.json({ error: "需要登录后创建章节" }, { status: 401 });
-  if (!identity.demo && identity.role !== "teacher") return NextResponse.json({ error: "只有教师可以创建章节" }, { status: 403 });
+  if (identity.role !== "teacher") return NextResponse.json({ error: "只有教师可以创建章节" }, { status: 403 });
   const classId = body?.classId || "class_python";
   const order = await db.prepare("SELECT COALESCE(MAX(sort_order), 0) + 1 AS next_order FROM chapters WHERE class_id = ?").bind(classId).first<{ next_order: number }>();
   const id = newId("chapter");
@@ -22,4 +22,3 @@ export async function POST(request: Request) {
   await writeAudit(db, identity, "create", "chapter", id, name);
   return NextResponse.json({ chapter: { id, name, files: 0, status: "草稿" }, source: "d1" }, { status: 201 });
 }
-

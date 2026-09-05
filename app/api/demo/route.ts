@@ -10,7 +10,7 @@ export async function POST(request: Request) {
   await ensureSchema(db); await seedDemoData(db);
   const identity = await getIdentity(request);
   if (!identity) return NextResponse.json({ error: "需要登录后载入演示数据" }, { status: 401 });
-  if (!identity.demo && identity.role !== "teacher") return NextResponse.json({ error: "只有教师可以载入演示数据" }, { status: 403 });
+  if (identity.role !== "teacher") return NextResponse.json({ error: "只有教师可以载入演示数据" }, { status: 403 });
   const createdAt = timestamp();
   await db.batch([
     db.prepare("INSERT OR IGNORE INTO materials (id, chapter_id, name, file_type, size_label, download_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)").bind("demo_material_1", "chapter_1", "变量与数据类型讲义.pdf", "PDF", "2.8 MB", null, createdAt),

@@ -24,7 +24,7 @@ export async function POST(request: Request) {
   const db = getDatabase(); if (!db) return NextResponse.json({ task: { id: newId("task"), title, type: body.type, status: "published" }, source: "local-fallback" }, { status: 201 });
   await ensureSchema(db); await seedDemoData(db);
   const identity = await getIdentity(request); if (!identity) return NextResponse.json({ error: "需要登录后发布学习任务" }, { status: 401 });
-  if (!identity.demo && identity.role !== "teacher") return NextResponse.json({ error: "只有教师可以发布学习任务" }, { status: 403 });
+  if (identity.role !== "teacher") return NextResponse.json({ error: "只有教师可以发布学习任务" }, { status: 403 });
   const id = newId("task");
   await db.prepare("INSERT INTO learning_tasks (id, class_id, chapter_id, task_type, title, description, start_at, due_at, status, created_at) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, 'published', ?)").bind(id, "class_python", body.chapterId ?? null, body.type, title, body.description?.trim() ?? "", body.dueAt?.trim() || null, timestamp()).run();
   await writeAudit(db, identity, "create", "learning_task", id, `${body.type}:${title}`);
@@ -37,7 +37,7 @@ export async function PATCH(request: Request) {
   const db = getDatabase(); if (!db) return NextResponse.json({ task: { id: body.taskId, completed: body.action !== "reopen" }, source: "local-fallback" });
   await ensureSchema(db); await seedDemoData(db);
   const identity = await getIdentity(request); if (!identity) return NextResponse.json({ error: "需要登录后更新任务" }, { status: 401 });
-  if (!identity.demo && identity.role !== "student") return NextResponse.json({ error: "只有学生可以完成学习任务" }, { status: 403 });
+  if (identity.role !== "student") return NextResponse.json({ error: "只有学生可以完成学习任务" }, { status: 403 });
   const studentId = body.studentId ?? "student_1"; const status = body.action === "reopen" ? "pending" : "completed"; const now = timestamp();
   const id = newId("task_record");
   await db.prepare("INSERT INTO task_records (id, task_id, student_id, content, status, completed_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(task_id, student_id) DO UPDATE SET content = excluded.content, status = excluded.status, completed_at = excluded.completed_at, updated_at = excluded.updated_at").bind(id, body.taskId, studentId, body.content?.trim() ?? "", status, status === "completed" ? now : null, now).run();

@@ -45,8 +45,10 @@ export async function GET(request: Request) {
       db.prepare("SELECT m.id, m.chapter_id, m.name, m.file_type, m.size_label, m.download_url FROM materials m JOIN chapters c ON c.id = m.chapter_id WHERE c.class_id = ? ORDER BY m.created_at").bind(classRow.id).all<MaterialRow>(),
       db.prepare("SELECT a.id, a.name, a.chapter_id, a.deadline, a.status, a.description, COUNT(s.id) AS submitted_count, (SELECT COUNT(*) FROM students st WHERE st.class_id = a.class_id) AS total_students FROM assignments a LEFT JOIN submissions s ON s.assignment_id = a.id WHERE a.class_id = ? GROUP BY a.id ORDER BY a.created_at DESC").bind(classRow.id).all<AssignmentRow>(),
       db.prepare("SELECT id, name, initials FROM students WHERE class_id = ? ORDER BY created_at").bind(classRow.id).all<StudentRow>(),
-      identity.role === "student" && !identity.demo
-        ? db.prepare("SELECT s.id, s.assignment_id, s.student_id, s.content, s.status, s.score, s.feedback, s.submitted_at FROM submissions s JOIN assignments a ON a.id = s.assignment_id JOIN students st ON st.id = s.student_id JOIN class_members cm ON cm.class_id = a.class_id AND cm.user_id = ? WHERE a.class_id = ? AND cm.role = 'student' ORDER BY s.submitted_at DESC").bind(identity.id, classRow.id).all<SubmissionRow>()
+      identity.role === "student"
+        ? identity.demo
+          ? db.prepare("SELECT s.id, s.assignment_id, s.student_id, s.content, s.status, s.score, s.feedback, s.submitted_at FROM submissions s JOIN assignments a ON a.id = s.assignment_id WHERE a.class_id = ? AND s.student_id = 'student_1' ORDER BY s.submitted_at DESC").bind(classRow.id).all<SubmissionRow>()
+          : db.prepare("SELECT s.id, s.assignment_id, s.student_id, s.content, s.status, s.score, s.feedback, s.submitted_at FROM submissions s JOIN assignments a ON a.id = s.assignment_id JOIN students st ON st.id = s.student_id JOIN class_members cm ON cm.class_id = a.class_id AND cm.user_id = ? WHERE a.class_id = ? AND cm.role = 'student' ORDER BY s.submitted_at DESC").bind(identity.id, classRow.id).all<SubmissionRow>()
         : db.prepare("SELECT s.id, s.assignment_id, s.student_id, s.content, s.status, s.score, s.feedback, s.submitted_at FROM submissions s JOIN assignments a ON a.id = s.assignment_id WHERE a.class_id = ? ORDER BY s.submitted_at DESC").bind(classRow.id).all<SubmissionRow>(),
     ]);
     return NextResponse.json({
@@ -73,7 +75,7 @@ export async function POST(request: Request) {
   const identity = await getIdentity(request);
   if (!identity) return NextResponse.json({ error: "需要登录后管理班级" }, { status: 401 });
   if (body?.action === "create") {
-    if (!identity.demo && identity.role !== "teacher") return NextResponse.json({ error: "只有教师可以创建班级" }, { status: 403 });
+    if (identity.role !== "teacher") return NextResponse.json({ error: "只有教师可以创建班级" }, { status: 403 });
     const name = body.name?.trim();
     if (!name) return NextResponse.json({ error: "班级名称不能为空" }, { status: 400 });
     const id = `class_${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`;
@@ -85,7 +87,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ class: { id, name, joinCode: code }, source: "d1" }, { status: 201 });
   }
   if (body?.action === "join") {
-    if (!identity.demo && identity.role !== "student") return NextResponse.json({ error: "只有学生可以加入班级" }, { status: 403 });
+    if (identity.role !== "student") return NextResponse.json({ error: "只有学生可以加入班级" }, { status: 403 });
     const code = body.joinCode?.trim().toUpperCase();
     if (!code) return NextResponse.json({ error: "班级码不能为空" }, { status: 400 });
     const classRow = await db.prepare("SELECT id, name FROM classes WHERE join_code = ? LIMIT 1").bind(code).first<{ id: string; name: string }>();
