@@ -89,11 +89,28 @@ for (const group of created) {
   }
 }
 
+const gradedSubmission = latest.body.submissions.find((item) => item.assignment_id === created[0].assignmentId);
+assert(gradedSubmission, "评分测试需要一条提交记录");
+const gradeResult = await request("/api/submissions", {
+  method: "PATCH",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ submissionId: gradedSubmission.id, score: "95", feedback: "回答完整，继续保持。" }),
+});
+assert(gradeResult.response.status === 200, "教师评分应返回 200");
+assert(gradeResult.body.source === "d1", "评分应写入 D1");
+assert(gradeResult.body.submission.status === "graded" && gradeResult.body.submission.score === "95", "评分结果应保存为已批改");
+
+const invalidGrade = await request("/api/submissions", {
+  method: "PATCH",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ submissionId: gradedSubmission.id, score: "101" }),
+});
+assert(invalidGrade.response.status === 400, "超出范围的分数应返回 400");
+
 console.log(JSON.stringify({
   ok: true,
   baseUrl,
   runId,
   groups: created.map((group) => ({ label: group.label, assignmentId: group.assignmentId, submissions: new Set(group.submissions.map((item) => item.studentId)).size })),
-  validations: ["读取班级数据", "创建 3 份作业", "写入全员提交", "写入部分提交", "验证重复提交覆盖", "校验非法请求"],
+  validations: ["读取班级数据", "创建 3 份作业", "写入全员提交", "写入部分提交", "验证重复提交覆盖", "教师评分和评语", "校验非法请求"],
 }, null, 2));
-
