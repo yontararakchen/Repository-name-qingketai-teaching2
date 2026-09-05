@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getIdentity, writeAudit } from "@/db/auth";
+import { getIdentity, resolveClassId, writeAudit } from "@/db/auth";
 import { ensureSchema, getDatabase, newId, seedDemoData, timestamp } from "@/db/database";
 
 export const dynamic = "force-dynamic";
@@ -16,11 +16,10 @@ function buildActivityDraft(materialName: string, materialType: string, text: st
   return { summary: `已读取“${materialName}”（${materialType}）的基本信息，生成一份待教师核验的通用理解题草稿。`, knowledgePoints: ["核心概念", "关键定义", "应用理解"], questions: [{ id: "general-1", prompt: `关于“${materialName}”的核心内容，下列哪项表述最准确？`, options: ["材料中明确说明的定义", "与材料无关的猜测", "完全相反的结论", "无法从材料判断"], answer: "材料中明确说明的定义", reason: "未检测到明确主题，先生成通用理解题，教师应结合原文修改。" }] };
 }
 
-async function getContext(db: NonNullable<ReturnType<typeof getDatabase>>) {
-  const row = await db.prepare("SELECT id FROM classes ORDER BY created_at LIMIT 1").first<{ id: string }>();
-  if (!row) return null;
-  const course = await db.prepare("SELECT course_id FROM course_classes WHERE class_id = ? LIMIT 1").bind(row.id).first<{ course_id: string }>();
-  return { classId: row.id, courseId: course?.course_id ?? "course_python" };
+async function getContext(db: NonNullable<ReturnType<typeof getDatabase>>, identity: NonNullable<Awaited<ReturnType<typeof getIdentity>>>) {
+  const classId = await resolveClassId(db, identity); if (!classId) return null;
+  const course = await db.prepare("SELECT course_id FROM course_classes WHERE class_id = ? LIMIT 1").bind(classId).first<{ course_id: string }>();
+  return { classId, courseId: course?.course_id ?? "course_python" };
 }
 
 export async function GET(request: Request) {
@@ -28,7 +27,7 @@ export async function GET(request: Request) {
   if (!identity) return NextResponse.json({ error: "需要登录后查看 AI 草稿" }, { status: 401 });
   if (identity.role !== "teacher") return NextResponse.json({ error: "学生暂不能查看教师 AI 草稿" }, { status: 403 });
   const db = getDatabase(); if (!db) return NextResponse.json({ drafts: [], source: "local-fallback" });
-  await ensureSchema(db); await seedDemoData(db); const ctx = await getContext(db); if (!ctx) return NextResponse.json({ drafts: [], source: "empty" });
+  await ensureSchema(db); await seedDemoData(db); const ctx = await getContext(db, identity); if (!ctx) return NextResponse.json({ error: "当前账号尚未加入任何班级" }, { status: 403 });
   const rows = await db.prepare("SELECT id, chapter_id, draft_type, title, summary, payload, source_refs, status, created_at, updated_at, reviewed_at FROM ai_drafts WHERE class_id = ? ORDER BY updated_at DESC LIMIT 30").bind(ctx.classId).all<{ id: string; chapter_id: string | null; draft_type: DraftType; title: string; summary: string; payload: string; source_refs: string; status: string; created_at: string; updated_at: string; reviewed_at: string | null }>();
   return NextResponse.json({ drafts: rows.results.map((row) => ({ id: row.id, chapterId: row.chapter_id, type: row.draft_type, title: row.title, summary: row.summary, payload: JSON.parse(row.payload || "{}"), sourceRefs: JSON.parse(row.source_refs || "[]"), status: row.status, createdAt: row.created_at, updatedAt: row.updated_at, reviewedAt: row.reviewed_at })), source: "d1" });
 }
@@ -38,7 +37,7 @@ export async function POST(request: Request) {
   if (!identity) return NextResponse.json({ error: "需要登录后生成 AI 草稿" }, { status: 401 });
   if (identity.role !== "teacher") return NextResponse.json({ error: "只有教师可以生成 AI 草稿" }, { status: 403 });
   const db = getDatabase(); if (!db) return NextResponse.json({ error: "演示模式暂不支持保存 AI 草稿" }, { status: 503 });
-  await ensureSchema(db); await seedDemoData(db); const ctx = await getContext(db); if (!ctx) return NextResponse.json({ error: "暂无课程" }, { status: 404 });
+  await ensureSchema(db); await seedDemoData(db); const ctx = await getContext(db, identity); if (!ctx) return NextResponse.json({ error: "当前账号尚未加入任何班级" }, { status: 403 });
   const body = await request.json().catch(() => ({})) as { draftType?: DraftType; chapterId?: string | null; materialName?: string; materialType?: string; text?: string };
   const draftType: DraftType = body.draftType === "insight" ? "insight" : "activity";
   let title = "材料活动草稿"; let summary = ""; let payload: Record<string, unknown> = {}; let sourceRefs: Array<Record<string, string>> = [];
@@ -59,7 +58,7 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
   const identity = await getIdentity(request); if (!identity) return NextResponse.json({ error: "需要登录后审核 AI 草稿" }, { status: 401 }); if (identity.role !== "teacher") return NextResponse.json({ error: "只有教师可以审核 AI 草稿" }, { status: 403 });
-  const db = getDatabase(); if (!db) return NextResponse.json({ error: "演示模式暂不支持审核 AI 草稿" }, { status: 503 }); await ensureSchema(db); await seedDemoData(db);
+  const db = getDatabase(); if (!db) return NextResponse.json({ error: "演示模式暂不支持审核 AI 草稿" }, { status: 503 }); await ensureSchema(db); await seedDemoData(db); if (!(await resolveClassId(db, identity))) return NextResponse.json({ error: "当前账号尚未加入任何班级" }, { status: 403 });
   const body = await request.json().catch(() => ({})) as { draftId?: string; status?: string; summary?: string; payload?: Record<string, unknown> }; const status = body.status; if (!body.draftId || !["draft", "confirmed", "rejected"].includes(status ?? "")) return NextResponse.json({ error: "审核状态不正确" }, { status: 400 });
   const now = timestamp(); const reviewedAt = status === "draft" ? null : now; const reviewedBy = status === "draft" ? null : (identity.demo ? "user_teacher_1" : identity.id); await db.prepare("UPDATE ai_drafts SET status = ?, summary = COALESCE(?, summary), payload = COALESCE(?, payload), updated_at = ?, reviewed_at = ?, reviewed_by = ? WHERE id = ?").bind(status, body.summary?.trim() || null, body.payload ? JSON.stringify(body.payload) : null, now, reviewedAt, reviewedBy, body.draftId).run(); await writeAudit(db, identity, status === "confirmed" ? "confirm" : status === "rejected" ? "reject" : "edit", "ai_draft", body.draftId, status);
   return NextResponse.json({ updated: true, status, updatedAt: now }, { status: 200 });

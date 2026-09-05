@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { ensureSchema, getDatabase, newId, seedDemoData, timestamp } from "@/db/database";
-import { getIdentity, writeAudit } from "@/db/auth";
+import { getIdentity, resolveClassId, writeAudit } from "@/db/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -17,8 +17,12 @@ export async function POST(request: Request) {
   const identity = await getIdentity(request);
   if (!identity) return NextResponse.json({ error: "需要登录后创建作业" }, { status: 401 });
   if (identity.role !== "teacher") return NextResponse.json({ error: "只有教师可以创建作业" }, { status: 403 });
+  const classId = await resolveClassId(db, identity); if (!classId) return NextResponse.json({ error: "当前账号尚未加入任何班级" }, { status: 403 });
+  const chapterId = body?.chapterId ?? "chapter_3";
+  const chapter = await db.prepare("SELECT id FROM chapters WHERE id = ? AND class_id = ? LIMIT 1").bind(chapterId, classId).first();
+  if (!chapter) return NextResponse.json({ error: "章节不属于当前班级" }, { status: 403 });
   const id = newId("assignment");
-  await db.prepare("INSERT INTO assignments (id, class_id, chapter_id, name, description, deadline, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").bind(id, "class_python", body?.chapterId ?? "chapter_3", name, body?.description?.trim() ?? "", body?.deadline?.trim() || "未设置", "draft", timestamp()).run();
+  await db.prepare("INSERT INTO assignments (id, class_id, chapter_id, name, description, deadline, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").bind(id, classId, chapterId, name, body?.description?.trim() ?? "", body?.deadline?.trim() || "未设置", "draft", timestamp()).run();
   await writeAudit(db, identity, "create", "assignment", id, name);
   return NextResponse.json({ assignment: { id, name, status: "草稿" }, source: "d1" }, { status: 201 });
 }

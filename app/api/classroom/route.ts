@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { ensureSchema, getDatabase, seedDemoData } from "@/db/database";
-import { getIdentity, writeAudit } from "@/db/auth";
+import { getIdentity, resolveClassId, resolveStudentId, writeAudit } from "@/db/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -38,7 +38,9 @@ export async function GET(request: Request) {
     await seedDemoData(db);
     const identity = await getIdentity(request);
     if (!identity) return NextResponse.json({ error: "需要登录后查看班级" }, { status: 401 });
-    const classRow = await db.prepare("SELECT id, name, course_name, term, join_code, teacher_name FROM classes ORDER BY created_at LIMIT 1").first<{ id: string; name: string; course_name: string; term: string; join_code: string; teacher_name: string }>();
+    const classId = await resolveClassId(db, identity);
+    if (!classId) return NextResponse.json({ error: "当前账号尚未加入任何班级" }, { status: 403 });
+    const classRow = await db.prepare("SELECT id, name, course_name, term, join_code, teacher_name FROM classes WHERE id = ? LIMIT 1").bind(classId).first<{ id: string; name: string; course_name: string; term: string; join_code: string; teacher_name: string }>();
     if (!classRow) return NextResponse.json({ ...demoData, source: "empty" });
     const [chapterRows, materialRows, assignmentRows, studentRows, submissionRows] = await Promise.all([
       db.prepare("SELECT id, name, files_count, status, sort_order FROM chapters WHERE class_id = ? ORDER BY sort_order").bind(classRow.id).all<ChapterRow>(),
@@ -46,9 +48,7 @@ export async function GET(request: Request) {
       db.prepare("SELECT a.id, a.name, a.chapter_id, a.deadline, a.status, a.description, COUNT(s.id) AS submitted_count, (SELECT COUNT(*) FROM students st WHERE st.class_id = a.class_id) AS total_students FROM assignments a LEFT JOIN submissions s ON s.assignment_id = a.id WHERE a.class_id = ? GROUP BY a.id ORDER BY a.created_at DESC").bind(classRow.id).all<AssignmentRow>(),
       db.prepare("SELECT id, name, initials FROM students WHERE class_id = ? ORDER BY created_at").bind(classRow.id).all<StudentRow>(),
       identity.role === "student"
-        ? identity.demo
-          ? db.prepare("SELECT s.id, s.assignment_id, s.student_id, s.content, s.status, s.score, s.feedback, s.submitted_at FROM submissions s JOIN assignments a ON a.id = s.assignment_id WHERE a.class_id = ? AND s.student_id = 'student_1' ORDER BY s.submitted_at DESC").bind(classRow.id).all<SubmissionRow>()
-          : db.prepare("SELECT s.id, s.assignment_id, s.student_id, s.content, s.status, s.score, s.feedback, s.submitted_at FROM submissions s JOIN assignments a ON a.id = s.assignment_id JOIN students st ON st.id = s.student_id JOIN class_members cm ON cm.class_id = a.class_id AND cm.user_id = ? WHERE a.class_id = ? AND cm.role = 'student' ORDER BY s.submitted_at DESC").bind(identity.id, classRow.id).all<SubmissionRow>()
+        ? db.prepare("SELECT s.id, s.assignment_id, s.student_id, s.content, s.status, s.score, s.feedback, s.submitted_at FROM submissions s JOIN assignments a ON a.id = s.assignment_id WHERE a.class_id = ? AND s.student_id = ? ORDER BY s.submitted_at DESC").bind(classRow.id, identity.demo ? "student_1" : (await resolveStudentId(db, identity, classRow.id) ?? "__none__")).all<SubmissionRow>()
         : db.prepare("SELECT s.id, s.assignment_id, s.student_id, s.content, s.status, s.score, s.feedback, s.submitted_at FROM submissions s JOIN assignments a ON a.id = s.assignment_id WHERE a.class_id = ? ORDER BY s.submitted_at DESC").bind(classRow.id).all<SubmissionRow>(),
     ]);
     return NextResponse.json({
@@ -94,6 +94,8 @@ export async function POST(request: Request) {
     if (!classRow) return NextResponse.json({ error: "班级码不存在" }, { status: 404 });
     const joinedAt = new Date().toISOString();
     await db.prepare("INSERT OR IGNORE INTO class_members (class_id, user_id, role, joined_at) VALUES (?, ?, 'student', ?)").bind(classRow.id, identity.id, joinedAt).run();
+    const studentId = `student_${identity.id.replace(/[^a-zA-Z0-9]/g, "").slice(-18)}`;
+    await db.prepare("INSERT OR IGNORE INTO students (id, class_id, name, initials, created_at) VALUES (?, ?, ?, ?, ?)").bind(studentId, classRow.id, identity.name, identity.name.slice(0, 1), joinedAt).run();
     await writeAudit(db, identity, "join", "class", classRow.id, code);
     return NextResponse.json({ class: classRow, source: "d1" }, { status: 201 });
   }

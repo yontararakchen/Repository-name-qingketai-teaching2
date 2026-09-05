@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getIdentity, writeLearningEvent } from "@/db/auth";
+import { getIdentity, resolveClassId, resolveStudentId, writeLearningEvent } from "@/db/auth";
 import { ensureSchema, getDatabase, newId, seedDemoData, timestamp } from "@/db/database";
 
 export const dynamic = "force-dynamic";
@@ -20,12 +20,13 @@ export async function GET(request: Request) {
   await ensureSchema(db); await seedDemoData(db);
   const identity = await getIdentity(request);
   if (!identity) return NextResponse.json({ error: "需要登录后查看学习分析" }, { status: 401 });
+  const classId = await resolveClassId(db, identity); if (!classId) return NextResponse.json({ error: "当前账号尚未加入任何班级" }, { status: 403 });
   const [studentsResult, tasksResult, submissionsResult, activitiesResult, eventsResult] = await Promise.all([
-    db.prepare("SELECT id, name, initials FROM students WHERE class_id = ? ORDER BY created_at").bind("class_python").all<StudentRow>(),
-    db.prepare("SELECT t.id, t.task_type, tr.student_id, tr.status FROM learning_tasks t LEFT JOIN task_records tr ON tr.task_id = t.id AND tr.status = 'completed' WHERE t.class_id = ?").bind("class_python").all<TaskRow>(),
-    db.prepare("SELECT s.id, s.student_id, s.score FROM submissions s JOIN assignments a ON a.id = s.assignment_id WHERE a.class_id = ?").bind("class_python").all<SubmissionRow>(),
-    db.prepare("SELECT a.id, ar.student_id FROM activities a JOIN lesson_sessions ls ON ls.id = a.session_id LEFT JOIN activity_responses ar ON ar.activity_id = a.id WHERE ls.class_id = ?").bind("class_python").all<ActivityRow>(),
-    db.prepare("SELECT e.id, e.student_id, e.event_type, e.object_type, e.object_id, e.payload, e.occurred_at, st.name AS student_name FROM learning_events e LEFT JOIN students st ON st.id = e.student_id WHERE e.class_id = ? ORDER BY e.occurred_at DESC LIMIT 20").bind("class_python").all<EventRow>(),
+    db.prepare("SELECT id, name, initials FROM students WHERE class_id = ? ORDER BY created_at").bind(classId).all<StudentRow>(),
+    db.prepare("SELECT t.id, t.task_type, tr.student_id, tr.status FROM learning_tasks t LEFT JOIN task_records tr ON tr.task_id = t.id AND tr.status = 'completed' WHERE t.class_id = ?").bind(classId).all<TaskRow>(),
+    db.prepare("SELECT s.id, s.student_id, s.score FROM submissions s JOIN assignments a ON a.id = s.assignment_id WHERE a.class_id = ?").bind(classId).all<SubmissionRow>(),
+    db.prepare("SELECT a.id, ar.student_id FROM activities a JOIN lesson_sessions ls ON ls.id = a.session_id LEFT JOIN activity_responses ar ON ar.activity_id = a.id WHERE ls.class_id = ?").bind(classId).all<ActivityRow>(),
+    db.prepare("SELECT e.id, e.student_id, e.event_type, e.object_type, e.object_id, e.payload, e.occurred_at, st.name AS student_name FROM learning_events e LEFT JOIN students st ON st.id = e.student_id WHERE e.class_id = ? ORDER BY e.occurred_at DESC LIMIT 20").bind(classId).all<EventRow>(),
   ]);
   const students = studentsResult.results;
   const tasks = tasksResult.results;
@@ -33,7 +34,7 @@ export async function GET(request: Request) {
   const activities = activitiesResult.results;
   const taskCount = new Set(tasks.map((row) => row.id)).size;
   const previewTaskCount = new Set(tasks.filter((row) => row.task_type === "preview").map((row) => row.id)).size;
-  const assignmentCount = (await db.prepare("SELECT COUNT(*) AS count FROM assignments WHERE class_id = ?").bind("class_python").first<{ count: number }>())?.count ?? 0;
+  const assignmentCount = (await db.prepare("SELECT COUNT(*) AS count FROM assignments WHERE class_id = ?").bind(classId).first<{ count: number }>())?.count ?? 0;
   const activityCount = new Set(activities.map((row) => row.id)).size;
   const completedTaskKeys = new Set(tasks.filter((row) => row.student_id).map((row) => `${row.id}:${row.student_id}`));
   const previewCompleted = new Set(tasks.filter((row) => row.task_type === "preview" && row.student_id).map((row) => `${row.id}:${row.student_id}`)).size;
@@ -54,11 +55,11 @@ export async function GET(request: Request) {
     const reasons = []; if (completionRate < 0.5) reasons.push("学习任务完成偏低"); if (assignmentRate < 0.5) reasons.push("作业提交不足"); if (activityRate < 0.5) reasons.push("课堂参与偏低");
     return { id: student.id, name: student.name, initials: student.initials, completionRate: percent(completionRate), assignmentRate: percent(assignmentRate), activityRate: percent(activityRate), averageScore: studentAverage, attention: reasons.length > 0, attentionReason: reasons.join("、") || "表现稳定" };
   });
-  const currentStudentId = identity.role === "student" ? (identity.demo ? "student_1" : ((await db.prepare("SELECT st.id FROM students st JOIN users u ON u.name = st.name WHERE st.class_id = ? AND u.id = ? LIMIT 1").bind("class_python", identity.id).first<{ id: string }>())?.id ?? "student_1")) : null;
+  const currentStudentId = identity.role === "student" ? await resolveStudentId(db, identity, classId) : null;
   const visibleStudents = identity.role === "student" ? studentInsights.filter((student) => student.id === currentStudentId) : studentInsights;
   const calculatedAt = timestamp();
-  await db.prepare("INSERT INTO class_insights (id, class_id, preview_completion_rate, assignment_completion_rate, activity_participation_rate, average_score, score_distribution, calculated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(class_id) DO UPDATE SET preview_completion_rate = excluded.preview_completion_rate, assignment_completion_rate = excluded.assignment_completion_rate, activity_participation_rate = excluded.activity_participation_rate, average_score = excluded.average_score, score_distribution = excluded.score_distribution, calculated_at = excluded.calculated_at").bind(newId("class_insight"), "class_python", classInsights.previewCompletionRate, classInsights.assignmentCompletionRate, classInsights.activityParticipationRate, classInsights.averageScore, JSON.stringify(distribution), calculatedAt).run();
-  for (const student of studentInsights) await db.prepare("INSERT INTO student_insights (id, class_id, student_id, completion_rate, assignment_rate, activity_rate, average_score, attention_reason, calculated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(class_id, student_id) DO UPDATE SET completion_rate = excluded.completion_rate, assignment_rate = excluded.assignment_rate, activity_rate = excluded.activity_rate, average_score = excluded.average_score, attention_reason = excluded.attention_reason, calculated_at = excluded.calculated_at").bind(newId("student_insight"), "class_python", student.id, student.completionRate, student.assignmentRate, student.activityRate, student.averageScore, student.attentionReason, calculatedAt).run();
+  await db.prepare("INSERT INTO class_insights (id, class_id, preview_completion_rate, assignment_completion_rate, activity_participation_rate, average_score, score_distribution, calculated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(class_id) DO UPDATE SET preview_completion_rate = excluded.preview_completion_rate, assignment_completion_rate = excluded.assignment_completion_rate, activity_participation_rate = excluded.activity_participation_rate, average_score = excluded.average_score, score_distribution = excluded.score_distribution, calculated_at = excluded.calculated_at").bind(newId("class_insight"), classId, classInsights.previewCompletionRate, classInsights.assignmentCompletionRate, classInsights.activityParticipationRate, classInsights.averageScore, JSON.stringify(distribution), calculatedAt).run();
+  for (const student of studentInsights) await db.prepare("INSERT INTO student_insights (id, class_id, student_id, completion_rate, assignment_rate, activity_rate, average_score, attention_reason, calculated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(class_id, student_id) DO UPDATE SET completion_rate = excluded.completion_rate, assignment_rate = excluded.assignment_rate, activity_rate = excluded.activity_rate, average_score = excluded.average_score, attention_reason = excluded.attention_reason, calculated_at = excluded.calculated_at").bind(newId("student_insight"), classId, student.id, student.completionRate, student.assignmentRate, student.activityRate, student.averageScore, student.attentionReason, calculatedAt).run();
   return NextResponse.json({ class: classInsights, students: visibleStudents, events: eventsResult.results.map((event) => ({ id: event.id, studentId: event.student_id, studentName: event.student_name ?? "学生", label: eventLabels[event.event_type] ?? event.event_type, eventType: event.event_type, objectType: event.object_type, objectId: event.object_id, occurredAt: event.occurred_at })), source: "d1" });
 }
 
@@ -69,8 +70,9 @@ export async function POST(request: Request) {
   const db = getDatabase(); if (!db) return NextResponse.json({ event: { eventType: body.eventType }, source: "local-fallback" }, { status: 201 });
   await ensureSchema(db); await seedDemoData(db); const identity = await getIdentity(request); if (!identity) return NextResponse.json({ error: "需要登录后记录学习行为" }, { status: 401 });
   if (identity.role !== "student") return NextResponse.json({ error: "只有学生可以记录学习行为" }, { status: 403 });
-  const studentId = identity.demo ? "student_1" : ((await db.prepare("SELECT st.id FROM students st JOIN users u ON u.name = st.name WHERE st.class_id = ? AND u.id = ? LIMIT 1").bind("class_python", identity.id).first<{ id: string }>())?.id);
+  const classId = await resolveClassId(db, identity); if (!classId) return NextResponse.json({ error: "当前账号尚未加入任何班级" }, { status: 403 });
+  const studentId = await resolveStudentId(db, identity, classId);
   if (!studentId) return NextResponse.json({ error: "未找到学生成员" }, { status: 403 });
-  await writeLearningEvent(db, { classId: "class_python", studentId, sessionId: body.sessionId, eventType: body.eventType, objectType: body.objectType, objectId: body.objectId, payload: body.payload });
+  await writeLearningEvent(db, { classId, studentId, sessionId: body.sessionId, eventType: body.eventType, objectType: body.objectType, objectId: body.objectId, payload: body.payload });
   return NextResponse.json({ event: { eventType: body.eventType, studentId }, source: "d1" }, { status: 201 });
 }

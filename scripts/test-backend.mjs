@@ -36,7 +36,11 @@ function assert(condition, message) {
   if (!condition) throw new Error(`测试失败：${message}`);
 }
 
-const initial = await request("/api/classroom");
+const anonymousSession = await request("/api/auth/session");
+assert(anonymousSession.response.status === 401, "匿名会话应返回 401");
+const anonymousClassroom = await request("/api/classroom");
+assert(anonymousClassroom.response.status === 401, "匿名访问班级应返回 401");
+const initial = await request("/api/classroom", { headers: teacherHeaders });
 assert(initial.response.ok, "班级接口应返回 200");
 assert(initial.body.source === "d1", "测试应连接到 D1 数据库");
 assert(initial.body.students.length >= 3, "测试数据需要至少 3 名学生");
@@ -78,7 +82,11 @@ const invalidSubmission = await request("/api/submissions", {
 });
 assert(invalidSubmission.response.status === 400, "缺少作业编号应返回 400");
 
-const latest = await request("/api/classroom");
+const studentCannotCreate = await request("/api/assignments", { method: "POST", headers: studentHeaders, body: JSON.stringify({ name: "越权作业", chapterId: "chapter_3" }) });
+assert(studentCannotCreate.response.status === 403, "学生创建作业应返回 403");
+const teacherCannotSubmit = await request("/api/submissions", { method: "POST", headers: teacherHeaders, body: JSON.stringify({ assignmentId: created[0].assignmentId, studentId: "student_1", content: "越权提交" }) });
+assert(teacherCannotSubmit.response.status === 403, "教师提交作业应返回 403");
+const latest = await request("/api/classroom", { headers: teacherHeaders });
 assert(latest.response.ok, "写入后班级接口应返回 200");
 for (const group of created) {
   const assignment = latest.body.assignments.find((item) => item.id === group.assignmentId);

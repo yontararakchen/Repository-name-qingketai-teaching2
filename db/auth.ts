@@ -13,7 +13,10 @@ export async function getIdentity(request: Request): Promise<Identity | null> {
   const userId = request.headers.get("oai-authenticated-user-id");
   const email = request.headers.get("oai-authenticated-user-email")?.toLowerCase() ?? "";
   const fullName = request.headers.get("oai-authenticated-user-full-name");
-  if (!userId && !email) return { id: "demo-teacher", email: "teacher@example.com", name: "王老师", role: "teacher", demo: true };
+  // Anonymous visitors must not inherit the demo teacher identity.  Demo mode
+  // is available only through the explicit x-demo-role header/cookie used by
+  // local previews and the scripted walkthrough.
+  if (!userId && !email) return null;
   const db = getDatabase();
   if (!db) return null;
   const existing = await db.prepare("SELECT id, email, name, role FROM users WHERE id = ? OR email = ? LIMIT 1").bind(userId ?? "", email).first<{ id: string; email: string; name: string; role: Role }>();
@@ -23,6 +26,24 @@ export async function getIdentity(request: Request): Promise<Identity | null> {
   const id = userId ?? newId("user");
   await db.prepare("INSERT OR IGNORE INTO users (id, email, name, role, created_at) VALUES (?, ?, ?, ?, ?)").bind(id, email || `${id}@workspace.local`, name, role, timestamp()).run();
   return { id, email: email || `${id}@workspace.local`, name, role, demo: false };
+}
+
+/** Resolve the first class the signed-in identity is actually a member of. */
+export async function resolveClassId(db: Database, identity: Identity, requestedClassId?: string | null) {
+  if (identity.demo) return requestedClassId?.trim() || "class_python";
+  if (requestedClassId?.trim()) {
+    const member = await db.prepare("SELECT class_id FROM class_members WHERE class_id = ? AND user_id = ? AND role = ? LIMIT 1").bind(requestedClassId.trim(), identity.id, identity.role).first<{ class_id: string }>();
+    return member?.class_id ?? null;
+  }
+  const member = await db.prepare("SELECT class_id FROM class_members WHERE user_id = ? AND role = ? ORDER BY joined_at LIMIT 1").bind(identity.id, identity.role).first<{ class_id: string }>();
+  return member?.class_id ?? null;
+}
+
+/** Resolve the student record belonging to the current signed-in student. */
+export async function resolveStudentId(db: Database, identity: Identity, classId: string) {
+  if (identity.demo) return "student_1";
+  const member = await db.prepare("SELECT st.id FROM students st JOIN class_members cm ON cm.class_id = st.class_id AND cm.user_id = ? AND cm.role = 'student' WHERE st.class_id = ? AND st.name = ? LIMIT 1").bind(identity.id, classId, identity.name).first<{ id: string }>();
+  return member?.id ?? null;
 }
 
 export async function writeAudit(db: Database, identity: Identity, action: string, objectType: string, objectId: string | null, detail = "") {

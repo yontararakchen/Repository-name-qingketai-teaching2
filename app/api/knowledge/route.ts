@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getIdentity, writeAudit } from "@/db/auth";
+import { getIdentity, resolveClassId, resolveStudentId, writeAudit } from "@/db/auth";
 import { ensureSchema, getDatabase, newId, seedDemoData, timestamp } from "@/db/database";
 
 export const dynamic = "force-dynamic";
@@ -22,11 +22,11 @@ function objectLabel(type: string, id: string, names: Record<string, string>) {
   return names[`${type}:${id}`] ?? `${type} · ${id}`;
 }
 
-async function getClassAndCourse(db: ReturnType<typeof getDatabase>) {
-  const classRow = await db!.prepare("SELECT id FROM classes ORDER BY created_at LIMIT 1").first<{ id: string }>();
-  if (!classRow) return null;
-  const course = await db!.prepare("SELECT course_id FROM course_classes WHERE class_id = ? LIMIT 1").bind(classRow.id).first<{ course_id: string }>();
-  return { classId: classRow.id, courseId: course?.course_id ?? "course_python" };
+async function getClassAndCourse(db: ReturnType<typeof getDatabase>, identity: NonNullable<Awaited<ReturnType<typeof getIdentity>>>) {
+  const classId = await resolveClassId(db!, identity);
+  if (!classId) return null;
+  const course = await db!.prepare("SELECT course_id FROM course_classes WHERE class_id = ? LIMIT 1").bind(classId).first<{ course_id: string }>();
+  return { classId, courseId: course?.course_id ?? "course_python" };
 }
 
 export async function GET(request: Request) {
@@ -35,7 +35,7 @@ export async function GET(request: Request) {
   await ensureSchema(db); await seedDemoData(db);
   const identity = await getIdentity(request);
   if (!identity) return NextResponse.json({ error: "需要登录后查看知识点" }, { status: 401 });
-  const context = await getClassAndCourse(db);
+  const context = await getClassAndCourse(db, identity);
   if (!context) return NextResponse.json({ points: [], students: [], source: "empty" });
   const [course, pointsResult, linksResult, studentsResult, assignmentsResult, activitiesResult, eventsResult, materialsResult, tasksResult] = await Promise.all([
     db.prepare("SELECT id, name FROM courses WHERE id = ? LIMIT 1").bind(context.courseId).first<{ id: string; name: string }>(),
@@ -49,6 +49,7 @@ export async function GET(request: Request) {
     db.prepare("SELECT id, title AS name FROM learning_tasks WHERE class_id = ?").bind(context.classId).all<NamedRow>(),
   ]);
   const links = linksResult.results;
+  const currentStudentId = identity.role === "student" ? await resolveStudentId(db, identity, context.classId) : null;
   const names: Record<string, string> = {};
   assignmentsResult.results.forEach((row) => { names[`assignment:${row.id}`] = row.name; });
   activitiesResult.results.forEach((row) => { names[`activity:${row.id}`] = row.prompt; });
@@ -57,7 +58,7 @@ export async function GET(request: Request) {
   const points = pointsResult.results.map((point) => {
     const pointLinks = links.filter((link) => link.knowledge_point_id === point.id).map((link) => ({ id: link.id, objectType: link.object_type, objectId: link.object_id, label: objectLabel(link.object_type, link.object_id, names) }));
     const visibleStudents = identity.role === "student"
-      ? studentsResult.results.filter((student) => identity.demo ? student.id === "student_1" : student.name === identity.name)
+      ? studentsResult.results.filter((student) => student.id === (currentStudentId ?? "__none__"))
       : studentsResult.results;
     const mastery = visibleStudents.map((student) => {
       const assignmentIds = new Set(pointLinks.filter((link) => link.objectType === "assignment").map((link) => link.objectId));
@@ -75,7 +76,7 @@ export async function GET(request: Request) {
     });
     return { id: point.id, name: point.name, description: point.description, chapterId: point.chapter_id, chapterName: point.chapter_name ?? "未归属章节", status: point.status, links: pointLinks, mastery };
   });
-  const visibleStudents = identity.role === "student" ? studentsResult.results.filter((student) => identity.demo ? student.id === "student_1" : student.name === identity.name) : studentsResult.results;
+  const visibleStudents = identity.role === "student" ? studentsResult.results.filter((student) => student.id === (currentStudentId ?? "__none__")) : studentsResult.results;
   const calculatedAt = timestamp();
   for (const point of points) for (const item of point.mastery) await db.prepare("INSERT INTO student_knowledge_mastery (id, class_id, student_id, knowledge_point_id, mastery_score, evidence_count, evidence, calculated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(class_id, student_id, knowledge_point_id) DO UPDATE SET mastery_score = excluded.mastery_score, evidence_count = excluded.evidence_count, evidence = excluded.evidence, calculated_at = excluded.calculated_at").bind(newId("mastery"), context.classId, item.studentId, point.id, item.score, item.evidenceCount, JSON.stringify(item.evidence), calculatedAt).run();
   return NextResponse.json({ course: course ?? { id: context.courseId, name: "课程" }, points, students: visibleStudents, source: "d1" });
@@ -89,7 +90,7 @@ export async function POST(request: Request) {
   const identity = await getIdentity(request);
   if (!identity) return NextResponse.json({ error: "需要登录后管理知识点" }, { status: 401 });
   if (identity.role !== "teacher") return NextResponse.json({ error: "只有教师可以管理知识点" }, { status: 403 });
-  const context = await getClassAndCourse(db); if (!context) return NextResponse.json({ error: "暂无课程" }, { status: 404 });
+  const context = await getClassAndCourse(db, identity); if (!context) return NextResponse.json({ error: "当前账号尚未加入班级" }, { status: 403 });
   if (body?.action === "create") {
     const name = body.name?.trim(); if (!name) return NextResponse.json({ error: "知识点名称不能为空" }, { status: 400 });
     const id = newId("kp"); const now = timestamp();

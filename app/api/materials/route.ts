@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getIdentity, writeAudit } from "@/db/auth";
+import { getIdentity, resolveClassId, writeAudit } from "@/db/auth";
 import { ensureSchema, getDatabase, newId, seedDemoData, timestamp } from "@/db/database";
 
 export const dynamic = "force-dynamic";
@@ -19,7 +19,8 @@ export async function POST(request: Request) {
   const identity = await getIdentity(request);
   if (!identity) return NextResponse.json({ error: "需要登录后上传资料" }, { status: 401 });
   if (identity.role !== "teacher") return NextResponse.json({ error: "只有教师可以上传资料" }, { status: 403 });
-  const chapter = await db.prepare("SELECT id FROM chapters WHERE id = ? LIMIT 1").bind(chapterId).first<{ id: string }>();
+  const classId = await resolveClassId(db, identity); if (!classId) return NextResponse.json({ error: "当前账号尚未加入任何班级" }, { status: 403 });
+  const chapter = await db.prepare("SELECT id FROM chapters WHERE id = ? AND class_id = ? LIMIT 1").bind(chapterId, classId).first<{ id: string }>();
   if (!chapter) return NextResponse.json({ error: "章节不存在" }, { status: 404 });
   const id = newId("material");
   const ext = file.name.split(".").pop()?.toUpperCase() || "FILE";
