@@ -12,7 +12,7 @@ export async function GET(request: Request) {
   await ensureSchema(db); await seedDemoData(db);
   const identity = await getIdentity(request);
   if (!identity) return NextResponse.json({ error: "需要登录后查看学习任务" }, { status: 401 });
-  const classId = await resolveClassId(db, identity);
+  const classId = await resolveClassId(db, identity, new URL(request.url).searchParams.get("classId"));
   if (!classId) return NextResponse.json({ error: "当前账号尚未加入任何班级" }, { status: 403 });
   const rows = await db.prepare("SELECT t.id, t.chapter_id, t.task_type, t.title, t.description, t.start_at, t.due_at, t.status, COUNT(tr.id) AS completed_count, (SELECT COUNT(*) FROM students st WHERE st.class_id = t.class_id) AS total_students FROM learning_tasks t LEFT JOIN task_records tr ON tr.task_id = t.id AND tr.status = 'completed' WHERE t.class_id = ? GROUP BY t.id ORDER BY COALESCE(t.due_at, '9999') ASC, t.created_at DESC").bind(classId).all<{ id: string; chapter_id: string | null; task_type: TaskType; title: string; description: string; start_at: string | null; due_at: string | null; status: string; completed_count: number; total_students: number }>();
   const studentId = identity.role === "student" ? await resolveStudentId(db, identity, classId) : null;
@@ -22,14 +22,14 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const body = await request.json().catch(() => null) as { title?: string; description?: string; type?: TaskType; chapterId?: string; dueAt?: string } | null;
+  const body = await request.json().catch(() => null) as { title?: string; description?: string; type?: TaskType; chapterId?: string; dueAt?: string; classId?: string } | null;
   const title = body?.title?.trim();
   if (!title || !body?.type || !["preview", "material", "assignment", "review"].includes(body.type)) return NextResponse.json({ error: "任务标题和类型不能为空" }, { status: 400 });
   const db = getDatabase(); if (!db) return NextResponse.json({ task: { id: newId("task"), title, type: body.type, status: "published" }, source: "local-fallback" }, { status: 201 });
   await ensureSchema(db); await seedDemoData(db);
   const identity = await getIdentity(request); if (!identity) return NextResponse.json({ error: "需要登录后发布学习任务" }, { status: 401 });
   if (identity.role !== "teacher") return NextResponse.json({ error: "只有教师可以发布学习任务" }, { status: 403 });
-  const classId = await resolveClassId(db, identity); if (!classId) return NextResponse.json({ error: "当前账号尚未加入任何班级" }, { status: 403 });
+  const classId = await resolveClassId(db, identity, body?.classId); if (!classId) return NextResponse.json({ error: "当前账号尚未加入任何班级" }, { status: 403 });
   const id = newId("task");
   if (body.chapterId) {
     const chapter = await db.prepare("SELECT id FROM chapters WHERE id = ? AND class_id = ? LIMIT 1").bind(body.chapterId, classId).first();

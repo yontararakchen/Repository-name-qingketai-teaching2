@@ -22,8 +22,8 @@ function objectLabel(type: string, id: string, names: Record<string, string>) {
   return names[`${type}:${id}`] ?? `${type} · ${id}`;
 }
 
-async function getClassAndCourse(db: ReturnType<typeof getDatabase>, identity: NonNullable<Awaited<ReturnType<typeof getIdentity>>>) {
-  const classId = await resolveClassId(db!, identity);
+async function getClassAndCourse(db: ReturnType<typeof getDatabase>, identity: NonNullable<Awaited<ReturnType<typeof getIdentity>>>, requestedClassId?: string | null) {
+  const classId = await resolveClassId(db!, identity, requestedClassId);
   if (!classId) return null;
   const course = await db!.prepare("SELECT course_id FROM course_classes WHERE class_id = ? LIMIT 1").bind(classId).first<{ course_id: string }>();
   return { classId, courseId: course?.course_id ?? "course_python" };
@@ -35,7 +35,7 @@ export async function GET(request: Request) {
   await ensureSchema(db); await seedDemoData(db);
   const identity = await getIdentity(request);
   if (!identity) return NextResponse.json({ error: "需要登录后查看知识点" }, { status: 401 });
-  const context = await getClassAndCourse(db, identity);
+  const context = await getClassAndCourse(db, identity, new URL(request.url).searchParams.get("classId"));
   if (!context) return NextResponse.json({ points: [], students: [], source: "empty" });
   const [course, pointsResult, linksResult, studentsResult, assignmentsResult, activitiesResult, eventsResult, materialsResult, tasksResult] = await Promise.all([
     db.prepare("SELECT id, name FROM courses WHERE id = ? LIMIT 1").bind(context.courseId).first<{ id: string; name: string }>(),
@@ -83,14 +83,14 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const body = await request.json().catch(() => null) as { action?: "create" | "link" | "relation"; name?: string; description?: string; chapterId?: string | null; knowledgePointId?: string; prerequisiteId?: string; objectType?: string; objectId?: string } | null;
+  const body = await request.json().catch(() => null) as { action?: "create" | "link" | "relation"; name?: string; description?: string; chapterId?: string | null; knowledgePointId?: string; prerequisiteId?: string; objectType?: string; objectId?: string; classId?: string } | null;
   const db = getDatabase();
   if (!db) return NextResponse.json({ error: "演示模式不支持知识点保存" }, { status: 503 });
   await ensureSchema(db); await seedDemoData(db);
   const identity = await getIdentity(request);
   if (!identity) return NextResponse.json({ error: "需要登录后管理知识点" }, { status: 401 });
   if (identity.role !== "teacher") return NextResponse.json({ error: "只有教师可以管理知识点" }, { status: 403 });
-  const context = await getClassAndCourse(db, identity); if (!context) return NextResponse.json({ error: "当前账号尚未加入班级" }, { status: 403 });
+  const context = await getClassAndCourse(db, identity, body?.classId); if (!context) return NextResponse.json({ error: "当前账号尚未加入班级" }, { status: 403 });
   if (body?.action === "create") {
     const name = body.name?.trim(); if (!name) return NextResponse.json({ error: "知识点名称不能为空" }, { status: 400 });
     const id = newId("kp"); const now = timestamp();

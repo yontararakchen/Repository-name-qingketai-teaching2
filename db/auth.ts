@@ -30,9 +30,10 @@ export async function getIdentity(request: Request): Promise<Identity | null> {
 
 /** Resolve the first class the signed-in identity is actually a member of. */
 export async function resolveClassId(db: Database, identity: Identity, requestedClassId?: string | null) {
-  if (identity.demo) return requestedClassId?.trim() || "class_python";
-  if (requestedClassId?.trim()) {
-    const member = await db.prepare("SELECT class_id FROM class_members WHERE class_id = ? AND user_id = ? AND role = ? LIMIT 1").bind(requestedClassId.trim(), identity.id, identity.role).first<{ class_id: string }>();
+  const cookieClassId = requestedClassId?.trim() || null;
+  if (identity.demo) return cookieClassId || "class_python";
+  if (cookieClassId) {
+    const member = await db.prepare("SELECT class_id FROM class_members WHERE class_id = ? AND user_id = ? AND role = ? LIMIT 1").bind(cookieClassId, identity.id, identity.role).first<{ class_id: string }>();
     return member?.class_id ?? null;
   }
   const member = await db.prepare("SELECT class_id FROM class_members WHERE user_id = ? AND role = ? ORDER BY joined_at LIMIT 1").bind(identity.id, identity.role).first<{ class_id: string }>();

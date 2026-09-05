@@ -32,16 +32,16 @@ async function readLesson(db: NonNullable<ReturnType<typeof getDatabase>>, ident
 export async function GET(request: Request) {
   const db = getDatabase(); if (!db) return NextResponse.json({ session: null, activities: [], source: "local-fallback" });
   await ensureSchema(db); await seedDemoData(db); const identity = await getIdentity(request); if (!identity) return NextResponse.json({ error: "需要登录后查看课堂" }, { status: 401 });
-  const classId = await resolveClassId(db, identity); if (!classId) return NextResponse.json({ error: "当前账号尚未加入任何班级" }, { status: 403 });
+  const classId = await resolveClassId(db, identity, new URL(request.url).searchParams.get("classId")); if (!classId) return NextResponse.json({ error: "当前账号尚未加入任何班级" }, { status: 403 });
   return NextResponse.json({ ...(await readLesson(db, identity, classId)), source: "d1" });
 }
 
 export async function POST(request: Request) {
-  const body = await request.json().catch(() => null) as { action?: "start" | "restart" | "publish" | "end"; chapterId?: string; prompt?: string; options?: string[] } | null;
+  const body = await request.json().catch(() => null) as { action?: "start" | "restart" | "publish" | "end"; chapterId?: string; prompt?: string; options?: string[]; classId?: string } | null;
   const db = getDatabase(); if (!db) return NextResponse.json({ error: "演示模式不支持课堂持久化" }, { status: 503 });
   await ensureSchema(db); await seedDemoData(db); const identity = await getIdentity(request); if (!identity) return NextResponse.json({ error: "需要登录后操作课堂" }, { status: 401 });
   if (identity.role !== "teacher") return NextResponse.json({ error: "只有教师可以控制课堂" }, { status: 403 });
-  const classId = await resolveClassId(db, identity); if (!classId) return NextResponse.json({ error: "当前账号尚未加入任何班级" }, { status: 403 });
+  const classId = await resolveClassId(db, identity, body?.classId); if (!classId) return NextResponse.json({ error: "当前账号尚未加入任何班级" }, { status: 403 });
   if (body?.action === "start" || body?.action === "restart") {
     const active = await db.prepare("SELECT id FROM lesson_sessions WHERE class_id = ? AND status = 'active' LIMIT 1").bind(classId).first<{ id: string }>();
     if (active && body.action === "start" && identity.role !== "teacher") return NextResponse.json({ error: "当前已有进行中的课堂，请结束当前课堂后再开始" }, { status: 409 });

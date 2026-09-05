@@ -38,7 +38,8 @@ export async function GET(request: Request) {
     await seedDemoData(db);
     const identity = await getIdentity(request);
     if (!identity) return NextResponse.json({ error: "需要登录后查看班级" }, { status: 401 });
-    const classId = await resolveClassId(db, identity);
+    const requestedClassId = new URL(request.url).searchParams.get("classId");
+    const classId = await resolveClassId(db, identity, requestedClassId);
     if (!classId) return NextResponse.json({ error: "当前账号尚未加入任何班级" }, { status: 403 });
     const classRow = await db.prepare("SELECT id, name, course_name, term, join_code, teacher_name FROM classes WHERE id = ? LIMIT 1").bind(classId).first<{ id: string; name: string; course_name: string; term: string; join_code: string; teacher_name: string }>();
     if (!classRow) return NextResponse.json({ ...demoData, source: "empty" });
@@ -79,10 +80,14 @@ export async function POST(request: Request) {
     const name = body.name?.trim();
     if (!name) return NextResponse.json({ error: "班级名称不能为空" }, { status: 400 });
     const id = `class_${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`;
+    const courseId = `course_${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`;
     const code = (body.joinCode?.trim().toUpperCase() || crypto.randomUUID().replaceAll("-", "").slice(0, 6).toUpperCase());
     const createdAt = new Date().toISOString();
     await db.prepare("INSERT INTO classes (id, name, course_name, term, join_code, teacher_name, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(id, name, body.courseName?.trim() || name, body.term?.trim() || "未设置学期", code, identity.name, createdAt).run();
-    await db.prepare("INSERT OR IGNORE INTO class_members (class_id, user_id, role, joined_at) VALUES (?, ?, 'teacher', ?)").bind(id, identity.id, createdAt).run();
+    await db.prepare("INSERT INTO courses (id, name, description, created_at) VALUES (?, ?, ?, ?)").bind(courseId, body.courseName?.trim() || name, `${name}课程`, createdAt).run();
+    await db.prepare("INSERT INTO course_classes (course_id, class_id) VALUES (?, ?)").bind(courseId, id).run();
+    const memberUserId = identity.demo ? "user_teacher_1" : identity.id;
+    await db.prepare("INSERT OR IGNORE INTO class_members (class_id, user_id, role, joined_at) VALUES (?, ?, 'teacher', ?)").bind(id, memberUserId, createdAt).run();
     await writeAudit(db, identity, "create", "class", id, name);
     return NextResponse.json({ class: { id, name, joinCode: code }, source: "d1" }, { status: 201 });
   }

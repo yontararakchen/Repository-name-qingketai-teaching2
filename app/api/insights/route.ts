@@ -20,7 +20,7 @@ export async function GET(request: Request) {
   await ensureSchema(db); await seedDemoData(db);
   const identity = await getIdentity(request);
   if (!identity) return NextResponse.json({ error: "需要登录后查看学习分析" }, { status: 401 });
-  const classId = await resolveClassId(db, identity); if (!classId) return NextResponse.json({ error: "当前账号尚未加入任何班级" }, { status: 403 });
+  const classId = await resolveClassId(db, identity, new URL(request.url).searchParams.get("classId")); if (!classId) return NextResponse.json({ error: "当前账号尚未加入任何班级" }, { status: 403 });
   const [studentsResult, tasksResult, submissionsResult, activitiesResult, eventsResult] = await Promise.all([
     db.prepare("SELECT id, name, initials FROM students WHERE class_id = ? ORDER BY created_at").bind(classId).all<StudentRow>(),
     db.prepare("SELECT t.id, t.task_type, tr.student_id, tr.status FROM learning_tasks t LEFT JOIN task_records tr ON tr.task_id = t.id AND tr.status = 'completed' WHERE t.class_id = ?").bind(classId).all<TaskRow>(),

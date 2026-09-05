@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getIdentity, writeAudit } from "@/db/auth";
+import { getIdentity, resolveClassId, writeAudit } from "@/db/auth";
 import { ensureSchema, getDatabase, newId, seedDemoData, timestamp } from "@/db/database";
 
 export const dynamic = "force-dynamic";
@@ -17,10 +17,11 @@ export async function POST(request: Request) {
   const identity = await getIdentity(request);
   if (!identity) return NextResponse.json({ error: "需要登录后导入学生" }, { status: 401 });
   if (identity.role !== "teacher") return NextResponse.json({ error: "只有教师可以导入学生" }, { status: 403 });
-  const body = await request.json().catch(() => ({})) as { csv?: string };
+  const body = await request.json().catch(() => ({})) as { csv?: string; classId?: string };
   const lines = (body.csv ?? "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   if (lines.length < 2) return NextResponse.json({ error: "请至少提供一行学生数据" }, { status: 400 });
-  const classRow = await db.prepare("SELECT id FROM classes ORDER BY created_at LIMIT 1").first<{ id: string }>();
+  const classId = await resolveClassId(db, identity, body.classId); if (!classId) return NextResponse.json({ error: "当前账号没有可管理的班级" }, { status: 403 });
+  const classRow = await db.prepare("SELECT id FROM classes WHERE id = ? LIMIT 1").bind(classId).first<{ id: string }>();
   if (!classRow) return NextResponse.json({ error: "暂无可导入的班级" }, { status: 404 });
   const errors: string[] = []; let imported = 0; let skipped = 0;
   for (let index = 1; index < lines.length; index += 1) {
