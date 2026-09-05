@@ -6,6 +6,7 @@ export const dynamic = "force-dynamic";
 type LessonRow = { id: string; class_id: string; chapter_id: string | null; teacher_user_id: string | null; start_time: string; end_time: string | null; status: string };
 type ActivityRow = { id: string; session_id: string; activity_type: string; prompt: string; options: string; status: string; created_at: string };
 type ResponseRow = { id: string; activity_id: string; student_id: string; answer: string; submitted_at: string };
+type StudentNameRow = { id: string; name: string; initials: string };
 
 async function readLesson(db: NonNullable<ReturnType<typeof getDatabase>>, identity: Awaited<ReturnType<typeof getIdentity>>) {
   const session = await db.prepare("SELECT id, class_id, chapter_id, teacher_user_id, start_time, end_time, status FROM lesson_sessions WHERE class_id = ? ORDER BY start_time DESC LIMIT 1").bind("class_python").first<LessonRow>();
@@ -14,12 +15,16 @@ async function readLesson(db: NonNullable<ReturnType<typeof getDatabase>>, ident
     db.prepare("SELECT id, session_id, activity_type, prompt, options, status, created_at FROM activities WHERE session_id = ? ORDER BY created_at").bind(session.id).all<ActivityRow>(),
     db.prepare("SELECT ar.id, ar.activity_id, ar.student_id, ar.answer, ar.submitted_at FROM activity_responses ar JOIN activities a ON a.id = ar.activity_id WHERE a.session_id = ? ORDER BY ar.submitted_at").bind(session.id).all<ResponseRow>(),
   ]);
+  const studentResult = await db.prepare("SELECT id, name, initials FROM students WHERE class_id = ?").bind("class_python").all<StudentNameRow>();
+  const studentNames = new Map(studentResult.results.map((student) => [student.id, student.name]));
   return {
     session: { id: session.id, classId: session.class_id, chapterId: session.chapter_id, startTime: session.start_time, endTime: session.end_time, status: session.status },
     activities: activityResult.results.map((activity) => {
       const responses = responseResult.results.filter((response) => response.activity_id === activity.id);
       const currentStudentId = identity?.demo ? "student_1" : identity?.id === "user_student_1" ? "student_1" : identity?.id;
-      return { id: activity.id, sessionId: activity.session_id, type: activity.activity_type, prompt: activity.prompt, options: JSON.parse(activity.options || "[]") as string[], status: activity.status, responses: responses.length, distribution: Object.fromEntries((JSON.parse(activity.options || "[]") as string[]).map((option) => [option, responses.filter((response) => response.answer === option).length])), myAnswer: identity?.role === "student" ? responses.find((response) => response.student_id === currentStudentId)?.answer ?? null : null };
+      const options = JSON.parse(activity.options || "[]") as string[];
+      const respondents = identity?.role === "teacher" ? Object.fromEntries(options.map((option) => [option, responses.filter((response) => response.answer === option).map((response) => studentNames.get(response.student_id) ?? "学生")] )) : undefined;
+      return { id: activity.id, sessionId: activity.session_id, type: activity.activity_type, prompt: activity.prompt, options, status: activity.status, responses: responses.length, distribution: Object.fromEntries(options.map((option) => [option, responses.filter((response) => response.answer === option).length])), respondents, myAnswer: identity?.role === "student" ? responses.find((response) => response.student_id === currentStudentId)?.answer ?? null : null };
     }),
   };
 }
