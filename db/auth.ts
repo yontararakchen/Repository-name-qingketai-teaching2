@@ -8,7 +8,7 @@ export type Identity = { id: string; email: string; name: string; role: Role; de
  * development and the backend test script intentionally use a demo identity.
  */
 export async function getIdentity(request: Request): Promise<Identity | null> {
-  const demoRole = request.headers.get("x-demo-role");
+  const demoRole = request.headers.get("x-demo-role") ?? request.headers.get("cookie")?.match(/(?:^|;\s*)demo-role=(teacher|student)(?:;|$)/)?.[1];
   if (demoRole === "teacher" || demoRole === "student") return { id: `demo-${demoRole}`, email: `${demoRole}@example.com`, name: demoRole === "teacher" ? "王老师" : "张三", role: demoRole, demo: true };
   const userId = request.headers.get("oai-authenticated-user-id");
   const email = request.headers.get("oai-authenticated-user-email")?.toLowerCase() ?? "";
