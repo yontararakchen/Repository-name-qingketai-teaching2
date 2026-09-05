@@ -20,6 +20,7 @@ export async function seedDemoData(db: Database) {
   const existing = await db.prepare("SELECT id FROM classes LIMIT 1").first<{ id: string }>();
   if (existing) {
     await seedIdentityData(db);
+    await seedTaskData(db);
     return;
   }
 
@@ -42,6 +43,7 @@ export async function seedDemoData(db: Database) {
     db.prepare("INSERT INTO submissions (id, assignment_id, student_id, content, status, score, feedback, submitted_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").bind("submission_2", "assignment_1", "student_4", "已完成变量基础练习。", "graded", "92", "基础掌握良好。", createdAt, createdAt),
   ]);
   await seedIdentityData(db);
+  await seedTaskData(db);
 }
 
 async function seedIdentityData(db: Database) {
@@ -51,6 +53,16 @@ async function seedIdentityData(db: Database) {
     db.prepare("INSERT OR IGNORE INTO users (id, email, name, role, created_at) VALUES (?, ?, ?, ?, ?)").bind("user_student_1", "student@example.com", "张三", "student", createdAt),
     db.prepare("INSERT OR IGNORE INTO class_members (class_id, user_id, role, joined_at) VALUES (?, ?, ?, ?)").bind("class_python", "user_teacher_1", "teacher", createdAt),
     db.prepare("INSERT OR IGNORE INTO class_members (class_id, user_id, role, joined_at) VALUES (?, ?, ?, ?)").bind("class_python", "user_student_1", "student", createdAt),
+  ]);
+}
+
+async function seedTaskData(db: Database) {
+  const createdAt = now();
+  await db.batch([
+    db.prepare("INSERT OR IGNORE INTO courses (id, name, description, created_at) VALUES (?, ?, ?, ?)").bind("course_python", "Python 程序设计", "从变量、条件判断到循环结构的入门课程。", createdAt),
+    db.prepare("INSERT OR IGNORE INTO course_classes (course_id, class_id) VALUES (?, ?)").bind("course_python", "class_python"),
+    db.prepare("INSERT OR IGNORE INTO learning_tasks (id, class_id, chapter_id, task_type, title, description, start_at, due_at, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind("task_preview_1", "class_python", "chapter_3", "preview", "预习：循环结构", "阅读循环结构讲义，写下一个你见过的循环例子。", createdAt, "2026-09-10T23:59", "published", createdAt),
+    db.prepare("INSERT OR IGNORE INTO learning_tasks (id, class_id, chapter_id, task_type, title, description, start_at, due_at, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind("task_review_1", "class_python", "chapter_2", "review", "复习：条件判断", "回顾 if / elif / else，并完成课后复习清单。", "2026-09-11T00:00", "2026-09-20T23:59", "published", createdAt),
   ]);
 }
 

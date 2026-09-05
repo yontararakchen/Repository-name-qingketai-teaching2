@@ -1,0 +1,6 @@
+CREATE TABLE IF NOT EXISTS courses (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS course_classes (course_id TEXT NOT NULL, class_id TEXT NOT NULL, PRIMARY KEY (course_id, class_id), FOREIGN KEY (course_id) REFERENCES courses(id), FOREIGN KEY (class_id) REFERENCES classes(id));
+CREATE TABLE IF NOT EXISTS learning_tasks (id TEXT PRIMARY KEY, class_id TEXT NOT NULL, chapter_id TEXT, task_type TEXT NOT NULL CHECK (task_type IN ('preview', 'material', 'assignment', 'review')), title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', start_at TEXT, due_at TEXT, status TEXT NOT NULL DEFAULT 'published', created_at TEXT NOT NULL, FOREIGN KEY (class_id) REFERENCES classes(id), FOREIGN KEY (chapter_id) REFERENCES chapters(id));
+CREATE TABLE IF NOT EXISTS task_records (id TEXT PRIMARY KEY, task_id TEXT NOT NULL, student_id TEXT NOT NULL, content TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'completed', completed_at TEXT, updated_at TEXT NOT NULL, UNIQUE (task_id, student_id), FOREIGN KEY (task_id) REFERENCES learning_tasks(id), FOREIGN KEY (student_id) REFERENCES students(id));
+CREATE INDEX IF NOT EXISTS idx_learning_tasks_class_id ON learning_tasks(class_id);
+CREATE INDEX IF NOT EXISTS idx_task_records_task_id ON task_records(task_id);
