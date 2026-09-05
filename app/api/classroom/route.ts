@@ -52,7 +52,7 @@ export async function GET(request: Request) {
         ? db.prepare("SELECT s.id, s.assignment_id, s.student_id, s.content, s.status, s.score, s.feedback, s.submitted_at FROM submissions s JOIN assignments a ON a.id = s.assignment_id WHERE a.class_id = ? AND s.student_id = ? ORDER BY s.submitted_at DESC").bind(classRow.id, identity.demo ? "student_1" : (await resolveStudentId(db, identity, classRow.id) ?? "__none__")).all<SubmissionRow>()
         : db.prepare("SELECT s.id, s.assignment_id, s.student_id, s.content, s.status, s.score, s.feedback, s.submitted_at FROM submissions s JOIN assignments a ON a.id = s.assignment_id WHERE a.class_id = ? ORDER BY s.submitted_at DESC").bind(classRow.id).all<SubmissionRow>(),
     ]);
-    return NextResponse.json({
+    const response = NextResponse.json({
       class: { id: classRow.id, name: classRow.name, courseName: classRow.course_name, term: classRow.term, joinCode: classRow.join_code, teacherName: classRow.teacher_name },
       chapters: chapterRows.results.map((row) => ({ id: row.id, name: row.name, files: row.files_count, status: row.status === "published" ? "已发布" : "草稿" })),
       materials: materialRows.results.map((row) => ({ id: row.id, chapterId: row.chapter_id, name: row.name, type: row.file_type, size: row.size_label, downloadUrl: row.download_url })),
@@ -61,6 +61,8 @@ export async function GET(request: Request) {
       submissions: submissionRows.results,
       source: "d1",
     });
+    response.headers.append("Set-Cookie", `active-class-id=${encodeURIComponent(classRow.id)}; Path=/; Max-Age=86400; SameSite=Lax`);
+    return response;
   } catch (error) {
     console.error("classroom_read_failed", error);
     return NextResponse.json({ ...demoData, source: "error-fallback" }, { status: 200 });

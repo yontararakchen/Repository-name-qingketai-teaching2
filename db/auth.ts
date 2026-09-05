@@ -1,15 +1,17 @@
 import { getDatabase, newId, timestamp, type Database } from "@/db/database";
 
 export type Role = "teacher" | "student";
-export type Identity = { id: string; email: string; name: string; role: Role; demo: boolean };
+export type Identity = { id: string; email: string; name: string; role: Role; demo: boolean; activeClassId?: string };
 
 /**
  * Sites forwards the signed-in workspace identity in request headers. Local
  * development and the backend test script intentionally use a demo identity.
  */
 export async function getIdentity(request: Request): Promise<Identity | null> {
-  const demoRole = request.headers.get("x-demo-role") ?? request.headers.get("cookie")?.match(/(?:^|;\s*)demo-role=(teacher|student)(?:;|$)/)?.[1];
-  if (demoRole === "teacher" || demoRole === "student") return { id: `demo-${demoRole}`, email: `${demoRole}@example.com`, name: demoRole === "teacher" ? "王老师" : "张三", role: demoRole, demo: true };
+  const cookie = request.headers.get("cookie") ?? "";
+  const demoRole = request.headers.get("x-demo-role") ?? cookie.match(/(?:^|;\s*)demo-role=(teacher|student)(?:;|$)/)?.[1];
+  const activeClassId = cookie.match(/(?:^|;\s*)active-class-id=([^;]+)/)?.[1];
+  if (demoRole === "teacher" || demoRole === "student") return { id: `demo-${demoRole}`, email: `${demoRole}@example.com`, name: demoRole === "teacher" ? "王老师" : "张三", role: demoRole, demo: true, activeClassId };
   const userId = request.headers.get("oai-authenticated-user-id");
   const email = request.headers.get("oai-authenticated-user-email")?.toLowerCase() ?? "";
   const fullName = request.headers.get("oai-authenticated-user-full-name");
@@ -31,10 +33,14 @@ export async function getIdentity(request: Request): Promise<Identity | null> {
 /** Resolve the first class the signed-in identity is actually a member of. */
 export async function resolveClassId(db: Database, identity: Identity, requestedClassId?: string | null) {
   const cookieClassId = requestedClassId?.trim() || null;
-  if (identity.demo) return cookieClassId || "class_python";
+  if (identity.demo) return cookieClassId || identity.activeClassId || "class_python";
   if (cookieClassId) {
     const member = await db.prepare("SELECT class_id FROM class_members WHERE class_id = ? AND user_id = ? AND role = ? LIMIT 1").bind(cookieClassId, identity.id, identity.role).first<{ class_id: string }>();
     return member?.class_id ?? null;
+  }
+  if (identity.activeClassId) {
+    const activeMember = await db.prepare("SELECT class_id FROM class_members WHERE class_id = ? AND user_id = ? AND role = ? LIMIT 1").bind(identity.activeClassId, identity.id, identity.role).first<{ class_id: string }>();
+    if (activeMember?.class_id) return activeMember.class_id;
   }
   const member = await db.prepare("SELECT class_id FROM class_members WHERE user_id = ? AND role = ? ORDER BY joined_at LIMIT 1").bind(identity.id, identity.role).first<{ class_id: string }>();
   return member?.class_id ?? null;
