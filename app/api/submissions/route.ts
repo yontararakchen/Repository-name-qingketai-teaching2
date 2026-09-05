@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { ensureSchema, getDatabase, newId, seedDemoData, timestamp } from "@/db/database";
-import { getIdentity, writeAudit } from "@/db/auth";
+import { getIdentity, writeAudit, writeLearningEvent } from "@/db/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +23,7 @@ export async function POST(request: Request) {
   const id = newId("submission");
   await db.prepare("INSERT INTO submissions (id, assignment_id, student_id, content, status, submitted_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(assignment_id, student_id) DO UPDATE SET content = excluded.content, status = 'submitted', submitted_at = excluded.submitted_at, updated_at = excluded.updated_at").bind(id, body.assignmentId, body.studentId, body.content?.trim() ?? "", "submitted", time, time).run();
   await writeAudit(db, identity, "submit", "submission", id, `assignment=${body.assignmentId}`);
+  await writeLearningEvent(db, { classId: "class_python", studentId: body.studentId, eventType: "assignment_submitted", objectType: "submission", objectId: id, payload: { assignmentId: body.assignmentId } });
   return NextResponse.json({ submission: { id, assignmentId: body.assignmentId, studentId: body.studentId, status: "submitted" }, source: "d1" }, { status: 201 });
 }
 
@@ -49,5 +50,7 @@ export async function PATCH(request: Request) {
   if (!result.meta.changes) return NextResponse.json({ error: "提交记录不存在" }, { status: 404 });
   const submission = await db.prepare("SELECT id, assignment_id, student_id, content, status, score, feedback, submitted_at FROM submissions WHERE id = ?").bind(body.submissionId).first();
   await writeAudit(db, identity, "grade", "submission", body.submissionId, `score=${score}`);
+  const graded = submission as { student_id?: string; assignment_id?: string } | null;
+  if (graded?.student_id) await writeLearningEvent(db, { classId: "class_python", studentId: graded.student_id, eventType: "score_awarded", objectType: "submission", objectId: body.submissionId, payload: { assignmentId: graded.assignment_id, score: score || null } });
   return NextResponse.json({ submission, source: "d1" });
 }

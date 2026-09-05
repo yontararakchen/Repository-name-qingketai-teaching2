@@ -28,3 +28,7 @@ export async function getIdentity(request: Request): Promise<Identity | null> {
 export async function writeAudit(db: Database, identity: Identity, action: string, objectType: string, objectId: string | null, detail = "") {
   await db.prepare("INSERT INTO audit_logs (id, user_id, action, object_type, object_id, detail, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(newId("audit"), identity.id, action, objectType, objectId, detail, timestamp()).run();
 }
+
+export async function writeLearningEvent(db: Database, input: { classId: string; studentId?: string | null; sessionId?: string | null; eventType: string; objectType: string; objectId?: string | null; payload?: Record<string, unknown> }) {
+  await db.prepare("INSERT INTO learning_events (id, class_id, student_id, session_id, event_type, object_type, object_id, payload, occurred_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(newId("event"), input.classId, input.studentId ?? null, input.sessionId ?? null, input.eventType, input.objectType, input.objectId ?? null, JSON.stringify(input.payload ?? {}), timestamp()).run();
+}

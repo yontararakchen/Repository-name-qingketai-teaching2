@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getIdentity, writeAudit } from "@/db/auth";
+import { getIdentity, writeAudit, writeLearningEvent } from "@/db/auth";
 import { ensureSchema, getDatabase, newId, seedDemoData, timestamp } from "@/db/database";
 
 export const dynamic = "force-dynamic";
@@ -42,6 +42,6 @@ export async function PATCH(request: Request) {
   const id = newId("task_record");
   await db.prepare("INSERT INTO task_records (id, task_id, student_id, content, status, completed_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(task_id, student_id) DO UPDATE SET content = excluded.content, status = excluded.status, completed_at = excluded.completed_at, updated_at = excluded.updated_at").bind(id, body.taskId, studentId, body.content?.trim() ?? "", status, status === "completed" ? now : null, now).run();
   await writeAudit(db, identity, status === "completed" ? "complete" : "reopen", "learning_task", body.taskId);
+  if (status === "completed") await writeLearningEvent(db, { classId: "class_python", studentId, eventType: "task_completed", objectType: "learning_task", objectId: body.taskId });
   return NextResponse.json({ task: { id: body.taskId, completed: status === "completed", status }, source: "d1" });
 }
-

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getIdentity, writeAudit } from "@/db/auth";
+import { getIdentity, writeAudit, writeLearningEvent } from "@/db/auth";
 import { ensureSchema, getDatabase, newId, seedDemoData, timestamp } from "@/db/database";
 
 export const dynamic = "force-dynamic";
@@ -55,5 +55,6 @@ export async function PATCH(request: Request) {
   await ensureSchema(db); await seedDemoData(db); const identity = await getIdentity(request); if (!identity) return NextResponse.json({ error: "需要登录后作答" }, { status: 401 });
   if (!identity.demo && identity.role !== "student") return NextResponse.json({ error: "只有学生可以提交课堂答案" }, { status: 403 });
   const studentId = body.studentId ?? "student_1"; const now = timestamp(); const id = newId("response");
-  await db.prepare("INSERT INTO activity_responses (id, activity_id, student_id, answer, submitted_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(activity_id, student_id) DO UPDATE SET answer = excluded.answer, submitted_at = excluded.submitted_at").bind(id, body.activityId, studentId, body.answer.trim(), now).run(); await writeAudit(db, identity, "respond", "activity", body.activityId, body.answer.trim()); return NextResponse.json({ response: { id, activityId: body.activityId, studentId, answer: body.answer.trim() }, source: "d1" });
+  const activity = await db.prepare("SELECT session_id FROM activities WHERE id = ?").bind(body.activityId).first<{ session_id: string }>();
+  await db.prepare("INSERT INTO activity_responses (id, activity_id, student_id, answer, submitted_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(activity_id, student_id) DO UPDATE SET answer = excluded.answer, submitted_at = excluded.submitted_at").bind(id, body.activityId, studentId, body.answer.trim(), now).run(); await writeAudit(db, identity, "respond", "activity", body.activityId, body.answer.trim()); await writeLearningEvent(db, { classId: "class_python", studentId, sessionId: activity?.session_id, eventType: "activity_submitted", objectType: "activity", objectId: body.activityId, payload: { answer: body.answer.trim() } }); return NextResponse.json({ response: { id, activityId: body.activityId, studentId, answer: body.answer.trim() }, source: "d1" });
 }
