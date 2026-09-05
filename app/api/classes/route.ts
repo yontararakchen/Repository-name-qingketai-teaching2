@@ -10,8 +10,9 @@ export async function GET(request: Request) {
   await ensureSchema(db); await seedDemoData(db);
   const identity = await getIdentity(request);
   if (!identity) return NextResponse.json({ error: "需要登录后查看班级列表" }, { status: 401 });
+  const memberUserId = identity.demo ? (identity.role === "teacher" ? "user_teacher_1" : "user_student_1") : identity.id;
   const rows = identity.demo
-    ? await db.prepare("SELECT c.id, c.name, c.course_name, c.term, c.join_code, cm.role, COUNT(st.id) AS student_count FROM classes c LEFT JOIN class_members cm ON cm.class_id = c.id AND cm.user_id = ? LEFT JOIN students st ON st.class_id = c.id GROUP BY c.id ORDER BY c.created_at").bind("demo-teacher").all<{ id: string; name: string; course_name: string; term: string; join_code: string; role: string | null; student_count: number }>()
+    ? await db.prepare("SELECT c.id, c.name, c.course_name, c.term, c.join_code, cm.role, COUNT(st.id) AS student_count FROM classes c JOIN class_members cm ON cm.class_id = c.id AND cm.user_id = ? AND cm.role = ? LEFT JOIN students st ON st.class_id = c.id GROUP BY c.id ORDER BY c.created_at").bind(memberUserId, identity.role).all<{ id: string; name: string; course_name: string; term: string; join_code: string; role: string | null; student_count: number }>()
     : await db.prepare("SELECT c.id, c.name, c.course_name, c.term, c.join_code, cm.role, COUNT(st.id) AS student_count FROM classes c JOIN class_members cm ON cm.class_id = c.id AND cm.user_id = ? LEFT JOIN students st ON st.class_id = c.id GROUP BY c.id ORDER BY c.created_at").bind(identity.id).all<{ id: string; name: string; course_name: string; term: string; join_code: string; role: string; student_count: number }>();
   return NextResponse.json({ classes: rows.results.map((row) => ({ id: row.id, name: row.name, courseName: row.course_name, term: row.term, joinCode: row.join_code, role: row.role ?? identity.role, studentCount: row.student_count })), source: "d1" });
 }

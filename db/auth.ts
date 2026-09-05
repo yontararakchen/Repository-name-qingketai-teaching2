@@ -33,7 +33,16 @@ export async function getIdentity(request: Request): Promise<Identity | null> {
 /** Resolve the first class the signed-in identity is actually a member of. */
 export async function resolveClassId(db: Database, identity: Identity, requestedClassId?: string | null) {
   const cookieClassId = requestedClassId?.trim() || null;
-  if (identity.demo) return cookieClassId || identity.activeClassId || "class_python";
+  const memberUserId = identity.demo ? (identity.role === "teacher" ? "user_teacher_1" : "user_student_1") : identity.id;
+  if (identity.demo) {
+    const candidate = cookieClassId || identity.activeClassId;
+    if (candidate) {
+      const member = await db.prepare("SELECT class_id FROM class_members WHERE class_id = ? AND user_id = ? AND role = ? LIMIT 1").bind(candidate, memberUserId, identity.role).first<{ class_id: string }>();
+      return member?.class_id ?? null;
+    }
+    const member = await db.prepare("SELECT class_id FROM class_members WHERE user_id = ? AND role = ? ORDER BY joined_at LIMIT 1").bind(memberUserId, identity.role).first<{ class_id: string }>();
+    return member?.class_id ?? null;
+  }
   if (cookieClassId) {
     const member = await db.prepare("SELECT class_id FROM class_members WHERE class_id = ? AND user_id = ? AND role = ? LIMIT 1").bind(cookieClassId, identity.id, identity.role).first<{ class_id: string }>();
     return member?.class_id ?? null;
@@ -48,7 +57,10 @@ export async function resolveClassId(db: Database, identity: Identity, requested
 
 /** Resolve the student record belonging to the current signed-in student. */
 export async function resolveStudentId(db: Database, identity: Identity, classId: string) {
-  if (identity.demo) return "student_1";
+  if (identity.demo) {
+    const demoStudent = await db.prepare("SELECT st.id FROM students st JOIN class_members cm ON cm.class_id = st.class_id AND cm.user_id = 'user_student_1' AND cm.role = 'student' WHERE st.class_id = ? LIMIT 1").bind(classId).first<{ id: string }>();
+    return demoStudent?.id ?? null;
+  }
   const member = await db.prepare("SELECT st.id FROM students st JOIN class_members cm ON cm.class_id = st.class_id AND cm.user_id = ? AND cm.role = 'student' WHERE st.class_id = ? AND st.name = ? LIMIT 1").bind(identity.id, classId, identity.name).first<{ id: string }>();
   return member?.id ?? null;
 }

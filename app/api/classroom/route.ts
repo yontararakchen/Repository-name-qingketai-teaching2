@@ -49,7 +49,7 @@ export async function GET(request: Request) {
       db.prepare("SELECT a.id, a.name, a.chapter_id, a.deadline, a.status, a.description, COUNT(s.id) AS submitted_count, (SELECT COUNT(*) FROM students st WHERE st.class_id = a.class_id) AS total_students FROM assignments a LEFT JOIN submissions s ON s.assignment_id = a.id WHERE a.class_id = ? GROUP BY a.id ORDER BY a.created_at DESC").bind(classRow.id).all<AssignmentRow>(),
       db.prepare("SELECT id, name, initials FROM students WHERE class_id = ? ORDER BY created_at").bind(classRow.id).all<StudentRow>(),
       identity.role === "student"
-        ? db.prepare("SELECT s.id, s.assignment_id, s.student_id, s.content, s.status, s.score, s.feedback, s.submitted_at FROM submissions s JOIN assignments a ON a.id = s.assignment_id WHERE a.class_id = ? AND s.student_id = ? ORDER BY s.submitted_at DESC").bind(classRow.id, identity.demo ? "student_1" : (await resolveStudentId(db, identity, classRow.id) ?? "__none__")).all<SubmissionRow>()
+        ? db.prepare("SELECT s.id, s.assignment_id, s.student_id, s.content, s.status, s.score, s.feedback, s.submitted_at FROM submissions s JOIN assignments a ON a.id = s.assignment_id WHERE a.class_id = ? AND s.student_id = ? ORDER BY s.submitted_at DESC").bind(classRow.id, (await resolveStudentId(db, identity, classRow.id) ?? "__none__")).all<SubmissionRow>()
         : db.prepare("SELECT s.id, s.assignment_id, s.student_id, s.content, s.status, s.score, s.feedback, s.submitted_at FROM submissions s JOIN assignments a ON a.id = s.assignment_id WHERE a.class_id = ? ORDER BY s.submitted_at DESC").bind(classRow.id).all<SubmissionRow>(),
     ]);
     const response = NextResponse.json({
@@ -100,8 +100,9 @@ export async function POST(request: Request) {
     const classRow = await db.prepare("SELECT id, name FROM classes WHERE join_code = ? LIMIT 1").bind(code).first<{ id: string; name: string }>();
     if (!classRow) return NextResponse.json({ error: "班级码不存在" }, { status: 404 });
     const joinedAt = new Date().toISOString();
-    await db.prepare("INSERT OR IGNORE INTO class_members (class_id, user_id, role, joined_at) VALUES (?, ?, 'student', ?)").bind(classRow.id, identity.id, joinedAt).run();
-    const studentId = `student_${identity.id.replace(/[^a-zA-Z0-9]/g, "").slice(-18)}`;
+    const memberUserId = identity.demo ? "user_student_1" : identity.id;
+    await db.prepare("INSERT OR IGNORE INTO class_members (class_id, user_id, role, joined_at) VALUES (?, ?, 'student', ?)").bind(classRow.id, memberUserId, joinedAt).run();
+    const studentId = identity.demo ? `student_demo_${classRow.id.slice(-10)}` : `student_${identity.id.replace(/[^a-zA-Z0-9]/g, "").slice(-18)}`;
     await db.prepare("INSERT OR IGNORE INTO students (id, class_id, name, initials, created_at) VALUES (?, ?, ?, ?, ?)").bind(studentId, classRow.id, identity.name, identity.name.slice(0, 1), joinedAt).run();
     await writeAudit(db, identity, "join", "class", classRow.id, code);
     return NextResponse.json({ class: classRow, source: "d1" }, { status: 201 });

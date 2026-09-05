@@ -17,11 +17,11 @@ async function readLesson(db: NonNullable<ReturnType<typeof getDatabase>>, ident
   ]);
   const studentResult = await db.prepare("SELECT id, name, initials FROM students WHERE class_id = ?").bind(classId).all<StudentNameRow>();
   const studentNames = new Map(studentResult.results.map((student) => [student.id, student.name]));
+  const currentStudentId = identity?.role === "student" ? await resolveStudentId(db, identity, classId) : undefined;
   return {
     session: { id: session.id, classId: session.class_id, chapterId: session.chapter_id, startTime: session.start_time, endTime: session.end_time, status: session.status },
     activities: activityResult.results.map((activity) => {
       const responses = responseResult.results.filter((response) => response.activity_id === activity.id);
-      const currentStudentId = identity?.role === "student" ? (identity.demo ? "student_1" : studentResult.results.find((student) => student.name === identity.name)?.id) : undefined;
       const options = JSON.parse(activity.options || "[]") as string[];
       const respondents = identity?.role === "teacher" ? Object.fromEntries(options.map((option) => [option, responses.filter((response) => response.answer === option).map((response) => studentNames.get(response.student_id) ?? "学生")] )) : undefined;
       return { id: activity.id, sessionId: activity.session_id, type: activity.activity_type, prompt: activity.prompt, options, status: activity.status, responses: responses.length, distribution: Object.fromEntries(options.map((option) => [option, responses.filter((response) => response.answer === option).length])), respondents, myAnswer: identity?.role === "student" ? responses.find((response) => response.student_id === currentStudentId)?.answer ?? null : null };
