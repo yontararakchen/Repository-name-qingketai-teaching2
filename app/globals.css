@@ -81,6 +81,8 @@ button { cursor: pointer; }
 .note-dot { width: 6px; height: 6px; background: #22c55e; border-radius: 50%; }
 
 .main-content { width: min(100%, 1180px); padding: 38px 48px 72px; margin: 0 auto; }
+.sync-line { display: flex; align-items: center; gap: 8px; margin: -14px 0 4px; color: #7e90a8; font-size: 12px; }
+.sync-dot { width: 7px; height: 7px; background: #4d8bea; border-radius: 50%; box-shadow: 0 0 0 4px #e8f1ff; }
 .page-stack { display: grid; gap: 25px; }
 .page-heading-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; }
 .breadcrumb { margin: 0 0 6px; color: #8c9aae; font-size: 12px; }
@@ -200,9 +202,12 @@ h3 { margin-bottom: 3px; color: #25364f; font-size: 14px; }
 .record-list { border-top: 1px solid var(--line); }
 .record-row { display: grid; grid-template-columns: 70px minmax(0,1fr) auto; align-items: center; gap: 17px; min-height: 78px; border-bottom: 1px solid var(--line); }
 .record-date { color: #8292a7; font-size: 12px; }.record-main strong { color: #344862; font-size: 13px; }.record-score { color: #2b63bf; font-weight: 700; }
+.empty-record { padding: 32px 0; color: #8a99ab; text-align: center; font-size: 12px; }
 
 .modal-backdrop { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; padding: 20px; background: rgba(20,43,76,.28); backdrop-filter: blur(4px); }
 .modal-card { width: min(100%, 470px); padding: 25px; background: #fff; border: 1px solid #dbe5f2; border-radius: 14px; box-shadow: 0 22px 70px rgba(23,54,98,.2); }
+.toast { position: fixed; right: 24px; bottom: 24px; z-index: 40; display: flex; align-items: center; gap: 17px; max-width: min(420px, calc(100% - 30px)); padding: 11px 13px 11px 15px; color: #31598e; background: #eef6ff; border: 1px solid #cfe1f8; border-radius: 9px; box-shadow: 0 10px 25px rgba(37,99,235,.12); font-size: 12px; text-align: left; }
+.toast span { color: #7a91af; font-size: 16px; }
 .modal-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 18px; }.modal-header h2 { margin: 0; font-size: 20px; }.close-button { width: 28px; height: 28px; color: #8291a4; background: #f3f6fa; border-radius: 7px; font-size: 19px; }.close-button:hover { color: var(--primary); background: #eaf2ff; }
 
 @media (max-width: 950px) {
