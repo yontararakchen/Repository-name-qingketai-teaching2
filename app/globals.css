@@ -224,6 +224,7 @@ h3 { margin-bottom: 3px; color: #25364f; font-size: 14px; }
 .ai-draft-card { border-color: #cbdcf5; background: linear-gradient(180deg, #fbfdff 0%, #f7faff 100%); }
 .ai-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: -4px 0 12px; color: #68809e; font-size: 12px; }
 .ai-draft-card .answer-preview { margin: 12px 0 16px; }.ai-draft-card .answer-preview p { margin: 7px 0 4px; color: #5d7390; }.ai-draft-card .answer-preview small { color: #91a0b2; }
+.ai-material-submit { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin: 4px 0 16px; padding: 13px 14px; border: 1px dashed #b8cde8; border-radius: 9px; background: #f6faff; }.ai-material-submit strong { color: #365f98; font-size: 13px; }.ai-material-submit p { margin: 4px 0 0; color: #8496ad; font-size: 11px; line-height: 1.5; }.ai-upload-button { position: relative; display: inline-flex; align-items: center; cursor: pointer; white-space: nowrap; }
 .task-layout, .task-stage-grid { display: grid; grid-template-columns: minmax(280px, .9fr) minmax(0, 1.1fr); gap: 18px; }
 .task-stage-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .task-list { display: grid; gap: 9px; }.task-row { display: flex; align-items: center; gap: 12px; padding: 13px 0; border-bottom: 1px solid var(--line); }.task-row:last-child { border-bottom: 0; }
