@@ -60,8 +60,8 @@ const fallbackInsights: InsightData = { class: { previewCompletionRate: 0, assig
 const fallbackKnowledge: KnowledgeData = { course: { id: "course_python", name: "Python 程序设计" }, points: [], students: [] };
 
 const teacherNav: { id: Page; label: string; icon: string }[] = [
-  { id: "overview", label: "班级首页", icon: "⌂" }, { id: "workbench", label: "章节工作台", icon: "▥" }, { id: "resources", label: "资源库", icon: "▤" }, { id: "class", label: "班级管理", icon: "♙" }, { id: "content", label: "课程内容", icon: "▤" },
-  { id: "assignments", label: "作业管理", icon: "✓" }, { id: "submissions", label: "学生提交", icon: "◌" }, { id: "tasks", label: "学习任务", icon: "◫" }, { id: "classroom", label: "课堂互动", icon: "▣" }, { id: "insights", label: "学情分析", icon: "◒" }, { id: "knowledge", label: "知识点", icon: "◇" }, { id: "ai", label: "AI 助教", icon: "✦" },
+  { id: "overview", label: "班级首页", icon: "⌂" }, { id: "workbench", label: "章节工作台", icon: "▥" }, { id: "resources", label: "资源库", icon: "▤" }, { id: "class", label: "班级管理", icon: "♙" },
+  { id: "submissions", label: "学生提交", icon: "◌" }, { id: "tasks", label: "学习任务", icon: "◫" }, { id: "insights", label: "学情分析", icon: "◒" }, { id: "ai", label: "AI 助教", icon: "✦" },
 ];
 const studentNav: { id: Page; label: string; icon: string }[] = [
   { id: "overview", label: "班级首页", icon: "⌂" }, { id: "announcements", label: "班级公告", icon: "▰" }, { id: "content", label: "课程内容", icon: "▤" },
