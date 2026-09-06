@@ -18,20 +18,32 @@ export async function GET(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  const body = await request.json().catch(() => null) as { action?: "remove" | "update"; classId?: string; userId?: string; name?: string; email?: string } | null;
+  const body = await request.json().catch(() => null) as { action?: "remove" | "update" | "settings"; classId?: string; userId?: string; name?: string; email?: string; courseName?: string; term?: string; joinCode?: string } | null;
   const db = getDatabase();
   if (!db) return NextResponse.json({ error: "演示模式不支持成员管理" }, { status: 503 });
   await ensureSchema(db); await seedDemoData(db);
   const identity = await getIdentity(request);
   if (!identity) return NextResponse.json({ error: "需要登录后管理成员" }, { status: 401 });
   if (identity.role !== "teacher") return NextResponse.json({ error: "只有教师可以管理成员" }, { status: 403 });
+  if (body?.action === "settings") {
+    if (!body.classId) return NextResponse.json({ error: "班级编号不能为空" }, { status: 400 });
+    if (!(await resolveClassId(db, identity, body.classId))) return NextResponse.json({ error: "你不是该班级教师" }, { status: 403 });
+    const name = body.name?.trim(); const courseName = body.courseName?.trim(); const term = body.term?.trim(); const joinCode = body.joinCode?.trim().toUpperCase();
+    if (!name || !courseName || !term || !joinCode) return NextResponse.json({ error: "班级名称、课程、学期和加入码均不能为空" }, { status: 400 });
+    const conflict = await db.prepare("SELECT id FROM classes WHERE join_code = ? AND id <> ? LIMIT 1").bind(joinCode, body.classId).first<{ id: string }>();
+    if (conflict) return NextResponse.json({ error: "加入码已被其他班级使用" }, { status: 409 });
+    await db.prepare("UPDATE classes SET name = ?, course_name = ?, term = ?, join_code = ? WHERE id = ?").bind(name, courseName, term, joinCode, body.classId).run();
+    await writeAudit(db, identity, "update", "class_settings", body.classId, `${name};${courseName};${term}`);
+    return NextResponse.json({ updated: true, class: { id: body.classId, name, courseName, term, joinCode }, source: "d1" });
+  }
   if (!body?.classId || !body.userId || !["remove", "update"].includes(body.action ?? "")) return NextResponse.json({ error: "成员操作参数不完整" }, { status: 400 });
   if (!(await resolveClassId(db, identity, body.classId))) return NextResponse.json({ error: "你不是该班级教师" }, { status: 403 });
   const member = await db.prepare("SELECT user_id FROM class_members WHERE class_id = ? AND user_id = ? AND role = 'student' LIMIT 1").bind(body.classId, body.userId).first<{ user_id: string }>();
-  if (!member) return NextResponse.json({ error: "学生不属于当前班级" }, { status: 404 });
+  const student = await db.prepare("SELECT id, name FROM students WHERE class_id = ? AND id = ? LIMIT 1").bind(body.classId, body.userId).first<{ id: string; name: string }>();
+  if (!member && !student) return NextResponse.json({ error: "学生不属于当前班级" }, { status: 404 });
   if (body.action === "remove") {
-    await db.prepare("DELETE FROM class_members WHERE class_id = ? AND user_id = ? AND role = 'student'").bind(body.classId, body.userId).run();
-    await db.prepare("DELETE FROM students WHERE class_id = ? AND id IN (SELECT id FROM students WHERE class_id = ? AND name = (SELECT name FROM users WHERE id = ?))").bind(body.classId, body.classId, body.userId).run();
+    await db.prepare("DELETE FROM class_members WHERE class_id = ? AND user_id = ? AND role = 'student'").bind(body.classId, member?.user_id ?? body.userId).run();
+    await db.prepare("DELETE FROM students WHERE class_id = ? AND id = ?").bind(body.classId, student?.id ?? body.userId).run();
     await writeAudit(db, identity, "remove", "class_members", body.classId, body.userId);
     return NextResponse.json({ removed: true, source: "d1" });
   }
@@ -86,6 +98,7 @@ export async function DELETE(request: Request) {
     byClass("DELETE FROM lesson_sessions WHERE class_id = ?"),
     byClass("DELETE FROM students WHERE class_id = ?"),
     byClass("DELETE FROM chapters WHERE class_id = ?"),
+    byClass("DELETE FROM announcements WHERE class_id = ?"),
     byClass("DELETE FROM class_members WHERE class_id = ?"),
     byClass("DELETE FROM course_classes WHERE class_id = ?"),
     byClass("DELETE FROM classes WHERE id = ?"),

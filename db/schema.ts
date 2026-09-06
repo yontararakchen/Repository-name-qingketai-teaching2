@@ -39,6 +39,18 @@ export const schemaStatements = [
     teacher_name TEXT NOT NULL,
     created_at TEXT NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS announcements (
+    id TEXT PRIMARY KEY,
+    class_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL DEFAULT '',
+    pinned INTEGER NOT NULL DEFAULT 0,
+    created_by TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (class_id) REFERENCES classes(id),
+    FOREIGN KEY (created_by) REFERENCES users(id)
+  )`,
   `CREATE TABLE IF NOT EXISTS course_classes (
     course_id TEXT NOT NULL,
     class_id TEXT NOT NULL,
@@ -378,5 +390,6 @@ export const schemaStatements = [
   `CREATE INDEX IF NOT EXISTS idx_submissions_assignment_id ON submissions(assignment_id)`,
   `CREATE INDEX IF NOT EXISTS idx_submission_history_submission ON submission_history(submission_id, created_at)`,
   `CREATE INDEX IF NOT EXISTS idx_class_members_user_id ON class_members(user_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_announcements_class_time ON announcements(class_id, pinned, created_at)`,
   `CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at)`,
 ];

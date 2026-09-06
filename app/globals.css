@@ -136,6 +136,18 @@ h3 { margin-bottom: 3px; color: #25364f; font-size: 14px; }
 .metric-detail { margin: 0; color: #8a99ab; font-size: 11px; }
 
 .content-section { padding: 22px 23px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+.resource-toolbar { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(150px, .75fr) minmax(180px, .9fr); gap: 10px; margin-bottom: 14px; }
+.resource-summary { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 5px; color: #8a99ab; font-size: 11px; }
+.class-management-grid { display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(0, .92fr); gap: 18px; }
+.student-add-form { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 8px; margin-bottom: 14px; }
+.member-list, .announcement-list { display: grid; gap: 0; margin-top: 15px; border-top: 1px solid var(--line); }
+.member-row, .announcement-row { display: flex; align-items: center; justify-content: space-between; gap: 13px; padding: 11px 0; border-bottom: 1px solid var(--line); }
+.member-row > div, .announcement-row > div { min-width: 0; flex: 1; }
+.member-row strong, .announcement-row strong { color: #33455f; font-size: 12px; }
+.member-row p, .announcement-row p { margin: 2px 0 0; color: #91a0b1; font-size: 11px; }
+.announcement-row { align-items: flex-start; }
+.announcement-row small { display: block; margin-top: 5px; color: #9aa8b9; font-size: 10px; }
+.checkbox-line { display: flex; align-items: center; gap: 7px; margin-top: 13px; color: #647894; font-size: 12px; }
 .page-heading-actions, .workbench-heading-actions { display: flex; align-items: center; gap: 10px; }
 .workbench-heading-actions { align-items: stretch; }
 .workbench-chapter-select { min-width: 190px; }
@@ -379,6 +391,8 @@ h3 { margin-bottom: 3px; color: #25364f; font-size: 14px; }
   .workbench-module-grid { grid-template-columns: 1fr; }
   .workbench-module { grid-template-columns: 39px minmax(0,1fr); }
   .workbench-module .secondary-button { grid-column: 2; justify-self: start; }
+  .resource-toolbar, .class-management-grid, .student-add-form { grid-template-columns: 1fr; }
+  .member-row, .announcement-row { align-items: flex-start; }
   .page-heading-row .primary-button, .class-hero .secondary-button { width: 100%; }
   h1 { font-size: 25px; }
   .metric-grid, .split-section, .student-grid { grid-template-columns: 1fr; }

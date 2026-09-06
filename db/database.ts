@@ -53,6 +53,7 @@ async function seedIdentityData(db: Database) {
     db.prepare("INSERT OR IGNORE INTO users (id, email, name, role, created_at) VALUES (?, ?, ?, ?, ?)").bind("user_student_1", "student@example.com", "张三", "student", createdAt),
     db.prepare("INSERT OR IGNORE INTO class_members (class_id, user_id, role, joined_at) VALUES (?, ?, ?, ?)").bind("class_python", "user_teacher_1", "teacher", createdAt),
     db.prepare("INSERT OR IGNORE INTO class_members (class_id, user_id, role, joined_at) VALUES (?, ?, ?, ?)").bind("class_python", "user_student_1", "student", createdAt),
+    db.prepare("INSERT OR IGNORE INTO announcements (id, class_id, title, content, pinned, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").bind("announcement_welcome", "class_python", "欢迎来到本学期课程", "请先查看第 3 章资料，并完成课前预习任务。", 1, "user_teacher_1", createdAt, createdAt),
   ]);
 }
 
