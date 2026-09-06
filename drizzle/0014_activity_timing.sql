@@ -1,0 +1,3 @@
+ALTER TABLE activities ADD COLUMN time_limit_seconds INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE activities ADD COLUMN allow_edit INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE activities ADD COLUMN deadline_at TEXT;

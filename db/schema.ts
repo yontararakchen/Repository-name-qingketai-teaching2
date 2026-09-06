@@ -155,6 +155,9 @@ export const schemaStatements = [
     correct_answer TEXT,
     selected_student_id TEXT,
     selected_at TEXT,
+    time_limit_seconds INTEGER NOT NULL DEFAULT 0,
+    allow_edit INTEGER NOT NULL DEFAULT 1,
+    deadline_at TEXT,
     status TEXT NOT NULL DEFAULT 'published',
     created_at TEXT NOT NULL,
     FOREIGN KEY (session_id) REFERENCES lesson_sessions(id)
