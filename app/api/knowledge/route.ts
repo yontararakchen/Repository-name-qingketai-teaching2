@@ -11,6 +11,7 @@ type AssignmentRow = { id: string; name: string; chapter_name: string | null; sc
 type ActivityRow = { id: string; prompt: string; student_id: string; score: number | null; feedback: string | null };
 type EventRow = { id: string; event_type: string; object_type: string; object_id: string | null; student_id: string | null };
 type NamedRow = { id: string; name: string };
+type RelationRow = { id: string; knowledge_point_id: string; prerequisite_id: string; relation_type: string };
 
 const fallbackPoints = [
   { id: "kp_loop_basics", name: "循环结构基础", description: "理解循环的作用、组成和基本执行过程。", chapterId: "chapter_3", chapterName: "第 3 章 循环结构", status: "active", links: [], students: [], mastery: null },
@@ -31,16 +32,17 @@ async function getClassAndCourse(db: ReturnType<typeof getDatabase>, identity: N
 
 export async function GET(request: Request) {
   const db = getDatabase();
-  if (!db) return NextResponse.json({ course: { id: "course_python", name: "Python 程序设计" }, points: fallbackPoints, students: [], source: "local-fallback" });
+  if (!db) return NextResponse.json({ course: { id: "course_python", name: "Python 程序设计" }, points: fallbackPoints, students: [], relations: [], source: "local-fallback" });
   await ensureSchema(db); await seedDemoData(db);
   const identity = await getIdentity(request);
   if (!identity) return NextResponse.json({ error: "需要登录后查看知识点" }, { status: 401 });
   const context = await getClassAndCourse(db, identity, new URL(request.url).searchParams.get("classId"));
-  if (!context) return NextResponse.json({ points: [], students: [], source: "empty" });
-  const [course, pointsResult, linksResult, studentsResult, assignmentsResult, activitiesResult, eventsResult, materialsResult, tasksResult] = await Promise.all([
+  if (!context) return NextResponse.json({ points: [], students: [], relations: [], source: "empty" });
+  const [course, pointsResult, linksResult, relationsResult, studentsResult, assignmentsResult, activitiesResult, eventsResult, materialsResult, tasksResult] = await Promise.all([
     db.prepare("SELECT id, name FROM courses WHERE id = ? LIMIT 1").bind(context.courseId).first<{ id: string; name: string }>(),
     db.prepare("SELECT kp.id, kp.course_id, kp.chapter_id, kp.name, kp.description, kp.status, c.name AS chapter_name FROM knowledge_points kp LEFT JOIN chapters c ON c.id = kp.chapter_id WHERE kp.course_id = ? AND kp.status = 'active' ORDER BY COALESCE(c.sort_order, 999), kp.created_at").bind(context.courseId).all<PointRow>(),
     db.prepare("SELECT id, knowledge_point_id, object_type, object_id FROM content_knowledge_points WHERE knowledge_point_id IN (SELECT id FROM knowledge_points WHERE course_id = ? AND status = 'active')").bind(context.courseId).all<LinkRow>(),
+    db.prepare("SELECT id, knowledge_point_id, prerequisite_id, relation_type FROM knowledge_relations WHERE knowledge_point_id IN (SELECT id FROM knowledge_points WHERE course_id = ? AND status = 'active') AND prerequisite_id IN (SELECT id FROM knowledge_points WHERE course_id = ? AND status = 'active')").bind(context.courseId, context.courseId).all<RelationRow>(),
     db.prepare("SELECT id, name, initials FROM students WHERE class_id = ? ORDER BY created_at").bind(context.classId).all<StudentRow>(),
     db.prepare("SELECT s.assignment_id AS id, a.name, c.name AS chapter_name, s.score, s.student_id FROM submissions s JOIN assignments a ON a.id = s.assignment_id LEFT JOIN chapters c ON c.id = a.chapter_id WHERE a.class_id = ?").bind(context.classId).all<AssignmentRow>(),
     db.prepare("SELECT a.id, a.prompt, ar.student_id, ar.score, ar.feedback FROM activities a JOIN lesson_sessions ls ON ls.id = a.session_id LEFT JOIN activity_responses ar ON ar.activity_id = a.id WHERE ls.class_id = ? UNION ALL SELECT a.id, a.prompt, dp.student_id, NULL AS score, NULL AS feedback FROM activities a JOIN lesson_sessions ls ON ls.id = a.session_id LEFT JOIN activity_discussion_posts dp ON dp.activity_id = a.id WHERE ls.class_id = ?").bind(context.classId, context.classId).all<ActivityRow>(),
@@ -81,7 +83,8 @@ export async function GET(request: Request) {
   const visibleStudents = identity.role === "student" ? studentsResult.results.filter((student) => student.id === (currentStudentId ?? "__none__")) : studentsResult.results;
   const calculatedAt = timestamp();
   for (const point of points) for (const item of point.mastery) await db.prepare("INSERT INTO student_knowledge_mastery (id, class_id, student_id, knowledge_point_id, mastery_score, evidence_count, evidence, calculated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(class_id, student_id, knowledge_point_id) DO UPDATE SET mastery_score = excluded.mastery_score, evidence_count = excluded.evidence_count, evidence = excluded.evidence, calculated_at = excluded.calculated_at").bind(newId("mastery"), context.classId, item.studentId, point.id, item.score, item.evidenceCount, JSON.stringify(item.evidence), calculatedAt).run();
-  return NextResponse.json({ course: course ?? { id: context.courseId, name: "课程" }, points, students: visibleStudents, source: "d1" });
+  const relations = relationsResult.results.map((row) => ({ id: row.id, knowledgePointId: row.knowledge_point_id, prerequisiteId: row.prerequisite_id, relationType: row.relation_type }));
+  return NextResponse.json({ course: course ?? { id: context.courseId, name: "课程" }, points, students: visibleStudents, relations, source: "d1" });
 }
 
 export async function POST(request: Request) {

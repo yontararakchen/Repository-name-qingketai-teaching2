@@ -299,6 +299,23 @@ h3 { margin-bottom: 3px; color: #25364f; font-size: 14px; }
 .knowledge-evidence { display: flex; gap: 8px; align-items: flex-start; padding: 9px 10px; background: #fafcff; border-radius: 8px; }
 .knowledge-evidence strong { color: #405a7c; font-size: 11px; }
 .knowledge-evidence p { margin: 3px 0 0; color: #8b9bb0; font-size: 10px; }
+.knowledge-graph-toolbar { display: flex; align-items: flex-end; justify-content: space-between; gap: 14px; margin-bottom: 12px; }
+.knowledge-graph-toolbar .section-title-row { margin-bottom: 0; }
+.knowledge-graph-toolbar .form-input { width: 180px; }
+.knowledge-graph { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; padding: 14px; background: #f8fbff; border: 1px solid var(--line); border-radius: 10px; }
+.knowledge-graph-node { display: grid; gap: 6px; padding: 12px; color: #405a7c; background: #fff; border: 1px solid #d9e6f4; border-radius: 10px; text-align: left; cursor: pointer; transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease; }
+.knowledge-graph-node:hover, .knowledge-graph-node-active { border-color: #8db5e5; box-shadow: 0 4px 14px rgba(43, 93, 153, .12); transform: translateY(-1px); }
+.knowledge-graph-node strong { color: #2e5f9e; font-size: 12px; }
+.knowledge-graph-node small { color: #8494aa; font-size: 10px; line-height: 1.5; }
+.knowledge-graph-node span { color: #7288a5; font-size: 10px; }
+.knowledge-relation-list { display: grid; gap: 7px; margin-top: 12px; }
+.knowledge-relation-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; color: #6d7f98; background: #fbfdff; border: 1px solid var(--line); border-radius: 8px; font-size: 11px; }
+.knowledge-relation-row strong { color: #3d5f8a; }
+.knowledge-student-chip em { display: block; overflow: hidden; color: #8b9bb0; font-size: 9px; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 720px) {
+  .knowledge-graph-toolbar { align-items: stretch; flex-direction: column; }
+  .knowledge-graph-toolbar .form-input { width: 100%; }
+}
 .ai-generate-row { display: flex; gap: 10px; align-items: center; max-width: 620px; }
 .ai-generate-row .form-input { flex: 1; }
 .ai-draft-list { display: grid; gap: 12px; }
