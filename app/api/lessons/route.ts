@@ -5,7 +5,7 @@ import { ensureSchema, getDatabase, newId, seedDemoData, timestamp } from "@/db/
 export const dynamic = "force-dynamic";
 type LessonRow = { id: string; class_id: string; chapter_id: string | null; teacher_user_id: string | null; start_time: string; end_time: string | null; status: string };
 type ActivityRow = { id: string; session_id: string; activity_type: string; question_type: string; prompt: string; options: string; status: string; created_at: string };
-type ResponseRow = { id: string; activity_id: string; student_id: string; answer: string; submitted_at: string };
+type ResponseRow = { id: string; activity_id: string; student_id: string; answer: string; score: number | null; feedback: string | null; graded_by: string | null; graded_at: string | null; submitted_at: string };
 type StudentNameRow = { id: string; name: string; initials: string };
 
 async function readLesson(db: NonNullable<ReturnType<typeof getDatabase>>, identity: Awaited<ReturnType<typeof getIdentity>>, classId: string) {
@@ -13,7 +13,7 @@ async function readLesson(db: NonNullable<ReturnType<typeof getDatabase>>, ident
   if (!session) return { session: null, activities: [] };
   const [activityResult, responseResult] = await Promise.all([
     db.prepare("SELECT id, session_id, activity_type, question_type, prompt, options, status, created_at FROM activities WHERE session_id = ? ORDER BY created_at").bind(session.id).all<ActivityRow>(),
-    db.prepare("SELECT ar.id, ar.activity_id, ar.student_id, ar.answer, ar.submitted_at FROM activity_responses ar JOIN activities a ON a.id = ar.activity_id WHERE a.session_id = ? ORDER BY ar.submitted_at").bind(session.id).all<ResponseRow>(),
+    db.prepare("SELECT ar.id, ar.activity_id, ar.student_id, ar.answer, ar.score, ar.feedback, ar.graded_by, ar.graded_at, ar.submitted_at FROM activity_responses ar JOIN activities a ON a.id = ar.activity_id WHERE a.session_id = ? ORDER BY ar.submitted_at").bind(session.id).all<ResponseRow>(),
   ]);
   const studentResult = await db.prepare("SELECT id, name, initials FROM students WHERE class_id = ?").bind(classId).all<StudentNameRow>();
   const studentNames = new Map(studentResult.results.map((student) => [student.id, student.name]));
@@ -24,7 +24,7 @@ async function readLesson(db: NonNullable<ReturnType<typeof getDatabase>>, ident
       const responses = responseResult.results.filter((response) => response.activity_id === activity.id);
       const options = JSON.parse(activity.options || "[]") as string[];
       const respondents = identity?.role === "teacher" ? Object.fromEntries(options.map((option) => [option, responses.filter((response) => response.answer === option).map((response) => studentNames.get(response.student_id) ?? "学生")] )) : undefined;
-      const textResponses = identity?.role === "teacher" ? responses.map((response) => ({ studentName: studentNames.get(response.student_id) ?? "学生", answer: response.answer })) : undefined;
+      const textResponses = identity?.role === "teacher" ? responses.map((response) => ({ responseId: response.id, studentId: response.student_id, studentName: studentNames.get(response.student_id) ?? "学生", answer: response.answer, score: response.score, feedback: response.feedback, gradedAt: response.graded_at })) : undefined;
       return { id: activity.id, sessionId: activity.session_id, type: activity.activity_type, questionType: activity.question_type || activity.activity_type, prompt: activity.prompt, options, status: activity.status, responses: responses.length, distribution: Object.fromEntries(options.map((option) => [option, responses.filter((response) => response.answer === option).length])), respondents, textResponses, myAnswer: identity?.role === "student" ? responses.find((response) => response.student_id === currentStudentId)?.answer ?? null : null };
     }),
   };
@@ -58,7 +58,15 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  const body = await request.json().catch(() => null) as { activityId?: string; studentId?: string; answer?: string; action?: "close" | "reopen" } | null;
+  const body = await request.json().catch(() => null) as { activityId?: string; studentId?: string; answer?: string; action?: "close" | "reopen" | "grade_response"; responseId?: string; score?: number | string | null; feedback?: string | null } | null;
+  if (body?.action === "grade_response") {
+    const db = getDatabase(); if (!db) return NextResponse.json({ error: "演示模式不支持课堂评分" }, { status: 503 }); await ensureSchema(db); await seedDemoData(db); const identity = await getIdentity(request); if (!identity || identity.role !== "teacher") return NextResponse.json({ error: "只有教师可以评分课堂回答" }, { status: 403 });
+    if (!body.responseId) return NextResponse.json({ error: "缺少回答编号" }, { status: 400 });
+    const score = body.score === null || body.score === undefined || String(body.score).trim() === "" ? null : Number(body.score); if (score !== null && (!Number.isFinite(score) || score < 0 || score > 100)) return NextResponse.json({ error: "分数必须是 0-100 的数字" }, { status: 400 });
+    const responseRow = await db.prepare("SELECT ar.id, ar.activity_id, ar.student_id, ls.class_id, a.prompt FROM activity_responses ar JOIN activities a ON a.id = ar.activity_id JOIN lesson_sessions ls ON ls.id = a.session_id WHERE ar.id = ? LIMIT 1").bind(body.responseId).first<{ id: string; activity_id: string; student_id: string; class_id: string; prompt: string }>();
+    if (!responseRow || !(await resolveClassId(db, identity, responseRow.class_id))) return NextResponse.json({ error: "回答不存在或无权评分" }, { status: 404 });
+    const now = timestamp(); await db.prepare("UPDATE activity_responses SET score = ?, feedback = ?, graded_by = ?, graded_at = ? WHERE id = ?").bind(score, body.feedback?.trim() || null, identity.demo ? "user_teacher_1" : identity.id, now, body.responseId).run(); await writeAudit(db, identity, "grade", "activity_response", body.responseId, `score=${score ?? ""}`); await writeLearningEvent(db, { classId: responseRow.class_id, studentId: responseRow.student_id, objectType: "activity_response", objectId: body.responseId, payload: { score, feedback: body.feedback?.trim() || null } }); return NextResponse.json({ updated: true, responseId: body.responseId, score, feedback: body.feedback?.trim() || null, source: "d1" });
+  }
   if (body?.action && body.activityId) {
     const db = getDatabase(); if (!db) return NextResponse.json({ error: "演示模式不支持活动管理" }, { status: 503 }); await ensureSchema(db); await seedDemoData(db); const identity = await getIdentity(request); if (!identity || identity.role !== "teacher") return NextResponse.json({ error: "只有教师可以管理活动" }, { status: 403 }); const activity = await db.prepare("SELECT ls.class_id FROM activities a JOIN lesson_sessions ls ON ls.id = a.session_id WHERE a.id = ? LIMIT 1").bind(body.activityId).first<{ class_id: string }>(); if (!activity || !(await resolveClassId(db, identity, activity.class_id))) return NextResponse.json({ error: "活动不存在或无权操作" }, { status: 404 }); await db.prepare("UPDATE activities SET status = ? WHERE id = ?").bind(body.action === "close" ? "closed" : "published", body.activityId).run(); return NextResponse.json({ updated: true, status: body.action === "close" ? "closed" : "published" });
   }

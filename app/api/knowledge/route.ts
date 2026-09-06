@@ -8,7 +8,7 @@ type PointRow = { id: string; course_id: string; chapter_id: string | null; name
 type LinkRow = { id: string; knowledge_point_id: string; object_type: string; object_id: string };
 type StudentRow = { id: string; name: string; initials: string };
 type AssignmentRow = { id: string; name: string; chapter_name: string | null; score: string | null; student_id: string };
-type ActivityRow = { id: string; prompt: string; student_id: string };
+type ActivityRow = { id: string; prompt: string; student_id: string; score: number | null; feedback: string | null };
 type EventRow = { id: string; event_type: string; object_type: string; object_id: string | null; student_id: string | null };
 type NamedRow = { id: string; name: string };
 
@@ -43,7 +43,7 @@ export async function GET(request: Request) {
     db.prepare("SELECT id, knowledge_point_id, object_type, object_id FROM content_knowledge_points WHERE knowledge_point_id IN (SELECT id FROM knowledge_points WHERE course_id = ? AND status = 'active')").bind(context.courseId).all<LinkRow>(),
     db.prepare("SELECT id, name, initials FROM students WHERE class_id = ? ORDER BY created_at").bind(context.classId).all<StudentRow>(),
     db.prepare("SELECT s.assignment_id AS id, a.name, c.name AS chapter_name, s.score, s.student_id FROM submissions s JOIN assignments a ON a.id = s.assignment_id LEFT JOIN chapters c ON c.id = a.chapter_id WHERE a.class_id = ?").bind(context.classId).all<AssignmentRow>(),
-    db.prepare("SELECT a.id, a.prompt, ar.student_id FROM activities a JOIN lesson_sessions ls ON ls.id = a.session_id LEFT JOIN activity_responses ar ON ar.activity_id = a.id WHERE ls.class_id = ?").bind(context.classId).all<ActivityRow>(),
+    db.prepare("SELECT a.id, a.prompt, ar.student_id, ar.score, ar.feedback FROM activities a JOIN lesson_sessions ls ON ls.id = a.session_id LEFT JOIN activity_responses ar ON ar.activity_id = a.id WHERE ls.class_id = ?").bind(context.classId).all<ActivityRow>(),
     db.prepare("SELECT id, event_type, object_type, object_id, student_id FROM learning_events WHERE class_id = ?").bind(context.classId).all<EventRow>(),
     db.prepare("SELECT m.id, m.name FROM materials m JOIN chapters c ON c.id = m.chapter_id WHERE c.class_id = ?").bind(context.classId).all<NamedRow>(),
     db.prepare("SELECT id, title AS name FROM learning_tasks WHERE class_id = ?").bind(context.classId).all<NamedRow>(),
@@ -69,9 +69,11 @@ export async function GET(request: Request) {
       const scores = assignmentsResult.results.filter((row) => row.student_id === student.id && assignmentIds.has(row.id) && row.score !== null && row.score !== "").map((row) => Number(row.score)).filter(Number.isFinite);
       assignmentsResult.results.filter((row) => row.student_id === student.id && assignmentIds.has(row.id)).forEach((row) => evidence.push({ type: "assignment", label: row.name, detail: row.score ? `作业得分 ${row.score} 分` : "已提交，等待评分", ...(row.score ? { score: Number(row.score) } : {}) }));
       const activityEvidence = activitiesResult.results.filter((row) => row.student_id === student.id && activityIds.has(row.id));
-      activityEvidence.forEach((row) => evidence.push({ type: "activity", label: row.prompt, detail: "参加过课堂活动（当前版本暂无标准答案）" }));
+      const activityScores = activityEvidence.filter((row) => row.score !== null && Number.isFinite(Number(row.score))).map((row) => Number(row.score));
+      activityEvidence.forEach((row) => evidence.push({ type: "activity", label: row.prompt, detail: row.score === null ? "参加过课堂活动，等待教师评分" : `课堂回答得分 ${row.score} 分${row.feedback ? ` · ${row.feedback}` : ""}`, ...(row.score !== null ? { score: Number(row.score) } : {}) }));
       eventsResult.results.filter((row) => row.student_id === student.id && ((row.object_type === "learning_task" && taskIds.has(row.object_id ?? "")) || (row.object_type === "material" && materialIds.has(row.object_id ?? "")))).forEach((row) => evidence.push({ type: row.object_type, label: objectLabel(row.object_type, row.object_id ?? "", names), detail: row.event_type === "task_completed" ? "已完成学习任务" : "已查看资料" }));
-      const score = scores.length ? Math.round((scores.reduce((sum, value) => sum + value, 0) / scores.length) * 10) / 10 : null;
+      const allScores = [...scores, ...activityScores];
+      const score = allScores.length ? Math.round((allScores.reduce((sum, value) => sum + value, 0) / allScores.length) * 10) / 10 : null;
       return { studentId: student.id, studentName: student.name, score, evidenceCount: evidence.length, evidence };
     });
     return { id: point.id, name: point.name, description: point.description, chapterId: point.chapter_id, chapterName: point.chapter_name ?? "未归属章节", status: point.status, links: pointLinks, mastery };
