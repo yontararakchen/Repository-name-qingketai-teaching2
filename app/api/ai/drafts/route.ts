@@ -63,3 +63,20 @@ export async function PATCH(request: Request) {
   const now = timestamp(); const reviewedAt = status === "draft" ? null : now; const reviewedBy = status === "draft" ? null : (identity.demo ? "user_teacher_1" : identity.id); await db.prepare("UPDATE ai_drafts SET status = ?, summary = COALESCE(?, summary), payload = COALESCE(?, payload), updated_at = ?, reviewed_at = ?, reviewed_by = ? WHERE id = ?").bind(status, body.summary?.trim() || null, body.payload ? JSON.stringify(body.payload) : null, now, reviewedAt, reviewedBy, body.draftId).run(); await writeAudit(db, identity, status === "confirmed" ? "confirm" : status === "rejected" ? "reject" : "edit", "ai_draft", body.draftId, status);
   return NextResponse.json({ updated: true, status, updatedAt: now }, { status: 200 });
 }
+
+export async function DELETE(request: Request) {
+  const identity = await getIdentity(request);
+  if (!identity) return NextResponse.json({ error: "需要登录后删除 AI 草稿" }, { status: 401 });
+  if (identity.role !== "teacher") return NextResponse.json({ error: "只有教师可以删除 AI 草稿" }, { status: 403 });
+  const db = getDatabase(); if (!db) return NextResponse.json({ deleted: 0, source: "local-fallback" });
+  await ensureSchema(db); await seedDemoData(db);
+  const classId = await resolveClassId(db, identity); if (!classId) return NextResponse.json({ error: "当前账号尚未加入任何班级" }, { status: 403 });
+  const body = await request.json().catch(() => ({})) as { draftId?: string; draftIds?: string[] };
+  const draftIds = [...new Set([...(body.draftIds ?? []), ...(body.draftId ? [body.draftId] : [])].map((id) => String(id).trim()).filter(Boolean))];
+  if (!draftIds.length) return NextResponse.json({ error: "请选择要删除的草稿" }, { status: 400 });
+  const rows = await db.prepare("SELECT id, title FROM ai_drafts WHERE class_id = ? AND id IN (" + draftIds.map(() => "?").join(",") + ")").bind(classId, ...draftIds).all<{ id: string; title: string }>();
+  if (!rows.results.length) return NextResponse.json({ error: "草稿不存在或无权删除" }, { status: 404 });
+  await db.prepare("DELETE FROM ai_drafts WHERE class_id = ? AND id IN (" + draftIds.map(() => "?").join(",") + ")").bind(classId, ...draftIds).run();
+  for (const row of rows.results) await writeAudit(db, identity, "delete", "ai_draft", row.id, row.title);
+  return NextResponse.json({ deleted: rows.results.length, draftIds: rows.results.map((row) => row.id), source: "d1" });
+}
