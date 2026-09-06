@@ -4,7 +4,7 @@ import { ensureSchema, getDatabase, newId, seedDemoData, timestamp } from "@/db/
 
 export const dynamic = "force-dynamic";
 type LessonRow = { id: string; class_id: string; chapter_id: string | null; teacher_user_id: string | null; start_time: string; end_time: string | null; status: string };
-type ActivityRow = { id: string; session_id: string; activity_type: string; prompt: string; options: string; status: string; created_at: string };
+type ActivityRow = { id: string; session_id: string; activity_type: string; question_type: string; prompt: string; options: string; status: string; created_at: string };
 type ResponseRow = { id: string; activity_id: string; student_id: string; answer: string; submitted_at: string };
 type StudentNameRow = { id: string; name: string; initials: string };
 
@@ -12,7 +12,7 @@ async function readLesson(db: NonNullable<ReturnType<typeof getDatabase>>, ident
   const session = await db.prepare("SELECT id, class_id, chapter_id, teacher_user_id, start_time, end_time, status FROM lesson_sessions WHERE class_id = ? ORDER BY start_time DESC LIMIT 1").bind(classId).first<LessonRow>();
   if (!session) return { session: null, activities: [] };
   const [activityResult, responseResult] = await Promise.all([
-    db.prepare("SELECT id, session_id, activity_type, prompt, options, status, created_at FROM activities WHERE session_id = ? ORDER BY created_at").bind(session.id).all<ActivityRow>(),
+    db.prepare("SELECT id, session_id, activity_type, question_type, prompt, options, status, created_at FROM activities WHERE session_id = ? ORDER BY created_at").bind(session.id).all<ActivityRow>(),
     db.prepare("SELECT ar.id, ar.activity_id, ar.student_id, ar.answer, ar.submitted_at FROM activity_responses ar JOIN activities a ON a.id = ar.activity_id WHERE a.session_id = ? ORDER BY ar.submitted_at").bind(session.id).all<ResponseRow>(),
   ]);
   const studentResult = await db.prepare("SELECT id, name, initials FROM students WHERE class_id = ?").bind(classId).all<StudentNameRow>();
@@ -24,7 +24,8 @@ async function readLesson(db: NonNullable<ReturnType<typeof getDatabase>>, ident
       const responses = responseResult.results.filter((response) => response.activity_id === activity.id);
       const options = JSON.parse(activity.options || "[]") as string[];
       const respondents = identity?.role === "teacher" ? Object.fromEntries(options.map((option) => [option, responses.filter((response) => response.answer === option).map((response) => studentNames.get(response.student_id) ?? "学生")] )) : undefined;
-      return { id: activity.id, sessionId: activity.session_id, type: activity.activity_type, prompt: activity.prompt, options, status: activity.status, responses: responses.length, distribution: Object.fromEntries(options.map((option) => [option, responses.filter((response) => response.answer === option).length])), respondents, myAnswer: identity?.role === "student" ? responses.find((response) => response.student_id === currentStudentId)?.answer ?? null : null };
+      const textResponses = identity?.role === "teacher" ? responses.map((response) => ({ studentName: studentNames.get(response.student_id) ?? "学生", answer: response.answer })) : undefined;
+      return { id: activity.id, sessionId: activity.session_id, type: activity.activity_type, questionType: activity.question_type || activity.activity_type, prompt: activity.prompt, options, status: activity.status, responses: responses.length, distribution: Object.fromEntries(options.map((option) => [option, responses.filter((response) => response.answer === option).length])), respondents, textResponses, myAnswer: identity?.role === "student" ? responses.find((response) => response.student_id === currentStudentId)?.answer ?? null : null };
     }),
   };
 }
@@ -37,7 +38,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const body = await request.json().catch(() => null) as { action?: "start" | "restart" | "publish" | "end" | "close_activity" | "reopen_activity"; chapterId?: string; prompt?: string; options?: string[]; classId?: string; activityType?: "choice" | "poll" | "short_answer" } | null;
+  const body = await request.json().catch(() => null) as { action?: "start" | "restart" | "publish" | "end" | "close_activity" | "reopen_activity"; chapterId?: string; prompt?: string; options?: string[]; classId?: string; activityType?: "choice" | "poll" | "short_answer"; questionType?: "choice" | "poll" | "true_false" | "fill_blank" | "short_answer" } | null;
   const db = getDatabase(); if (!db) return NextResponse.json({ error: "演示模式不支持课堂持久化" }, { status: 503 });
   await ensureSchema(db); await seedDemoData(db); const identity = await getIdentity(request); if (!identity) return NextResponse.json({ error: "需要登录后操作课堂" }, { status: 401 });
   if (identity.role !== "teacher") return NextResponse.json({ error: "只有教师可以控制课堂" }, { status: 403 });
@@ -51,9 +52,9 @@ export async function POST(request: Request) {
   const session = await db.prepare("SELECT id FROM lesson_sessions WHERE class_id = ? AND status = 'active' ORDER BY start_time DESC LIMIT 1").bind(classId).first<{ id: string }>();
   if (!session) return NextResponse.json({ error: "没有进行中的课堂" }, { status: 409 });
   if (body?.action === "end") { await db.prepare("UPDATE lesson_sessions SET status = 'ended', end_time = ? WHERE id = ?").bind(timestamp(), session.id).run(); await writeAudit(db, identity, "end", "lesson_session", session.id); return NextResponse.json({ session: { id: session.id, status: "ended" }, source: "d1" }); }
-  const prompt = body?.prompt?.trim(); const activityType = body?.activityType ?? "choice"; const options = (body?.options ?? []).map((option) => option.trim()).filter(Boolean).slice(0, 6);
-  if (!prompt || (activityType !== "short_answer" && options.length < 2)) return NextResponse.json({ error: activityType === "short_answer" ? "题目不能为空" : "题目和至少两个选项不能为空" }, { status: 400 });
-  const id = newId("activity"); await db.prepare("INSERT INTO activities (id, session_id, activity_type, prompt, options, status, created_at) VALUES (?, ?, ?, ?, ?, 'published', ?)").bind(id, session.id, activityType, prompt, JSON.stringify(options), timestamp()).run(); await writeAudit(db, identity, "publish", "activity", id, prompt); return NextResponse.json({ activity: { id, type: activityType, prompt, options, status: "published" }, source: "d1" }, { status: 201 });
+  const prompt = body?.prompt?.trim(); const questionType = body?.questionType ?? body?.activityType ?? "choice"; const activityType = questionType === "fill_blank" || questionType === "short_answer" ? "short_answer" : questionType === "poll" ? "poll" : "choice"; const options = (body?.options ?? []).map((option) => option.trim()).filter(Boolean).slice(0, 6); const normalizedOptions = questionType === "true_false" ? ["正确", "错误"] : options;
+  if (!prompt || (activityType !== "short_answer" && normalizedOptions.length < 2)) return NextResponse.json({ error: activityType === "short_answer" ? "题目不能为空" : "题目和至少两个选项不能为空" }, { status: 400 });
+  const id = newId("activity"); await db.prepare("INSERT INTO activities (id, session_id, activity_type, question_type, prompt, options, status, created_at) VALUES (?, ?, ?, ?, ?, ?, 'published', ?)").bind(id, session.id, activityType, questionType, prompt, JSON.stringify(normalizedOptions), timestamp()).run(); await writeAudit(db, identity, "publish", "activity", id, prompt); return NextResponse.json({ activity: { id, type: activityType, questionType, prompt, options: normalizedOptions, status: "published" }, source: "d1" }, { status: 201 });
 }
 
 export async function PATCH(request: Request) {

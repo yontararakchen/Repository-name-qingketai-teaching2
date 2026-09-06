@@ -149,6 +149,7 @@ export const schemaStatements = [
     id TEXT PRIMARY KEY,
     session_id TEXT NOT NULL,
     activity_type TEXT NOT NULL CHECK (activity_type IN ('choice', 'poll', 'short_answer')),
+    question_type TEXT NOT NULL DEFAULT 'choice',
     prompt TEXT NOT NULL,
     options TEXT NOT NULL DEFAULT '[]',
     status TEXT NOT NULL DEFAULT 'published',
