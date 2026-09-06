@@ -29,3 +29,26 @@ export async function POST(request: Request) {
   await db.batch([db.prepare("INSERT INTO materials (id, chapter_id, name, file_type, size_label, download_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(id, chapterId, file.name, ext, sizeLabel(file.size), `/api/materials?id=${encodeURIComponent(id)}`, now), db.prepare("INSERT INTO material_blobs (material_id, content_type, content_base64, uploaded_by, version, updated_at) VALUES (?, ?, ?, ?, 1, ?)").bind(id, file.type || "application/octet-stream", base64, identity.demo ? "user_teacher_1" : identity.id, now), db.prepare("UPDATE chapters SET files_count = files_count + 1 WHERE id = ?").bind(chapterId)]);
   await writeAudit(db, identity, "upload", "material", id, file.name); return NextResponse.json({ material: { id, chapterId, name: file.name, type: ext, size: sizeLabel(file.size), downloadUrl: `/api/materials?id=${encodeURIComponent(id)}`, version: 1, stored: true }, source: "d1", note: "文件内容已保存，可直接下载。" }, { status: 201 });
 }
+
+export async function DELETE(request: Request) {
+  const payload = await request.json().catch(() => ({})) as { materialId?: string };
+  const materialId = String(payload.materialId ?? "").trim();
+  if (!materialId) return NextResponse.json({ error: "缺少资料 ID" }, { status: 400 });
+  const db = getDatabase();
+  if (!db) return NextResponse.json({ deleted: true, materialId, source: "local-fallback" });
+  await ensureSchema(db); await seedDemoData(db);
+  const identity = await getIdentity(request);
+  if (!identity) return NextResponse.json({ error: "需要登录后删除资料" }, { status: 401 });
+  if (identity.role !== "teacher") return NextResponse.json({ error: "只有教师可以删除资料" }, { status: 403 });
+  const classId = await resolveClassId(db, identity);
+  if (!classId) return NextResponse.json({ error: "当前账号尚未加入任何班级" }, { status: 403 });
+  const row = await db.prepare("SELECT m.id, m.chapter_id, m.name FROM materials m JOIN chapters c ON c.id = m.chapter_id WHERE m.id = ? AND c.class_id = ? LIMIT 1").bind(materialId, classId).first<{ id: string; chapter_id: string; name: string }>();
+  if (!row) return NextResponse.json({ error: "资料不存在或无权删除" }, { status: 404 });
+  await db.batch([
+    db.prepare("DELETE FROM material_blobs WHERE material_id = ?").bind(materialId),
+    db.prepare("DELETE FROM materials WHERE id = ?").bind(materialId),
+    db.prepare("UPDATE chapters SET files_count = CASE WHEN files_count > 0 THEN files_count - 1 ELSE 0 END WHERE id = ?").bind(row.chapter_id),
+  ]);
+  await writeAudit(db, identity, "delete", "material", materialId, row.name);
+  return NextResponse.json({ deleted: true, materialId, source: "d1" });
+}
